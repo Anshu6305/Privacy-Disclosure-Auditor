@@ -61,7 +61,7 @@ This does not block Phase 4. It splits the work: all source code, schema, tests 
 | F-12 | Data-type and purpose extraction | `analysis/models/span_extractor.py` |
 | F-13 | Model variant binding | `analysis/models/variant.py` |
 | F-14 | Confidence thresholding (ALG-4) | `analysis/confidence/gate.py` |
-| F-15 | Taxonomy mapping (ALG-5) | `analysis/mapping/taxonomy_mapper.py` |
+| F-15 | Taxonomy mapping (ALG-5) | `analysis/mapping/taxonomy_mapper.py` (rules in `analysis/mapping/taxonomy/`) |
 | F-16 | Declaration normalisation | `analysis/mapping/declaration_normaliser.py` |
 | F-17 | Candidate construction (ALG-6) | `analysis/mapping/candidate_builder.py` |
 | F-18 | Semantic alignment (ALG-7) | `analysis/models/semantic_aligner.py` |
@@ -110,7 +110,7 @@ Major Project/
   acquisition/     gateway.py play_store_adapter.py provenance.py
   ml/              data/ train_*.py evaluate_goldset.py configs/
   frontend/        Dockerfile  package.json  src/pages src/components src/api
-  data/            corpus/ policies/ goldset/ taxonomy/   (git-ignored, see README)
+  data/            raw/ corpus/ policies/ goldset/   (git-ignored, see data/README.md)
   tests/           unit/ api/ ml/ integration/
   docs/            PHASE4_MASTER_PLAN.md
                    IMPLEMENTATION_TRACEABILITY.md
@@ -174,7 +174,30 @@ M1, M2, M4, M7, M8 and M9 can be built without waiting for any dataset. That is 
 - **Option A (recommended).** Start from an encoder already fine-tuned on a public natural-language-inference corpus and use it zero-shot, then fine-tune on 300-500 pairs the team labels while building the gold set. Entailment maps to Supports, contradiction to Contradicts, neutral to No-match.
 - **Option B.** Zero-shot NLI only, with the threshold tuned on the gold set, and no fine-tuning.
 
-Option A keeps the approved methodology intact. Option B is weaker but needs no extra annotation. This is a decision for the team, and the answer changes M6.
+### DECISION — Option A, approved by the team on 2026-11-04
+
+Fine-tuning proceeds **only if** sufficient reliable annotations can be
+produced. The following safeguards are binding on Milestone 6.
+
+1. **Annotation guide first.** Supports, Contradicts and No-match are defined
+   with decision rules and worked examples before any labelling starts. See
+   `docs/ANNOTATION_GUIDELINES_ALIGNMENT.md`.
+2. **Zero-shot stays the baseline.** The zero-shot NLI model is retained and
+   evaluated on the same held-out test set, so the fine-tuned model is always
+   compared against it rather than against nothing.
+3. **Split by application, never by pair.** Training, validation and test
+   splits are grouped by application. Two pairs from the same app, or from the
+   same policy document, never land on opposite sides of a split.
+4. **Per-class precision, recall and F1, plus macro-F1.** Reported for both
+   models. No improvement is claimed unless the held-out evaluation supports
+   it. Accuracy alone is never reported.
+5. **Fall back honestly.** If annotation volume or inter-annotator agreement is
+   insufficient, or if the fine-tuned model does not beat zero-shot on the
+   held-out set, the zero-shot model is retained, the limitation is documented,
+   and the deviation is recorded in `REQUIREMENT_CHANGE_LOG.md` for faculty
+   review.
+
+Implementation belongs to Milestone 6 and is not begun early.
 
 ---
 

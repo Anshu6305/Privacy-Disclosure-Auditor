@@ -15,7 +15,7 @@ A row is never promoted to "Implemented and verified" because the code looks
 finished. The test must have run. Where a status says verified, the test
 identifier in the same row is the evidence.
 
-Last updated: 2026-11-04 (Milestone 1)
+Last updated: 2026-11-04 (Milestone 2)
 
 ---
 
@@ -38,6 +38,45 @@ rather than to FR or NFR identifiers.
 | OPP-115 corpus verification and manifest | `ml/data/verify_opp115.py`, `ml/data/opp115_schema.py` | `test_opp115_verification.py` (7 tests) | Implemented and verified |
 | Three-container deployment definition | `docker-compose.yml`, `backend/Dockerfile` | not yet executed — Docker is unavailable in the authoring environment | Partially implemented |
 | Frontend builds | `frontend/` | `npm run build` succeeded, 2026-11-04 | Implemented and verified |
+
+## Milestone 2 — Database implementation
+
+All sixteen tables of the approved design, their constraints and the baseline
+migration. Every constraint row below was verified by attempting a write the
+design forbids and confirming the database refused it.
+
+| Design element | Code | Test | Status |
+|---|---|---|---|
+| Sixteen tables, no more | `backend/app/db/models.py` | `test_schema.py::test_exactly_sixteen_tables` | Implemented and verified |
+| Seven NOT NULL FKs on `audit_run` | `AuditRun` | `test_audit_run_has_seven_not_null_foreign_keys` | Implemented and verified |
+| Five verdict values only | `Verdict`, `ck_verdict_value` | `test_verdict_accepts_all_five_approved_values`, `test_verdict_rejects_an_invented_value` | Implemented and verified |
+| One verdict per category per audit | `uq_verdict_audit_category` | `test_one_verdict_per_category_per_audit` | Implemented and verified |
+| Four gold labels; Undetermined excluded | `ck_gold_label_is_annotation_label` | `test_gold_annotation_rejects_undetermined`, `test_gold_annotation_accepts_the_four_annotation_labels` | Implemented and verified |
+| Annotator disagreement recordable | `uq_gold_app_category_annotator` | `test_two_annotators_may_disagree_on_the_same_category`, `test_one_annotation_per_annotator_per_category` | Implemented and verified |
+| Evidence record requires a verbatim quote with offsets | `ck_record_evidence_requires_quote` | `test_evidence_record_requires_a_real_quote_with_offsets`, `test_evidence_record_rejects_an_empty_quote`, `test_evidence_record_rejects_reversed_offsets`, `test_valid_evidence_record_is_accepted` | Implemented and verified |
+| Absence record carries no quote | `ck_record_absence_has_no_quote` | `test_absence_record_may_not_carry_a_quote`, `test_absence_record_requires_a_reason`, `test_valid_absence_record_is_accepted` | Implemented and verified |
+| Inconclusive record states a reason | `ck_record_inconclusive_has_reason` | `test_inconclusive_record_requires_a_reason` | Implemented and verified |
+| Consistent verdict needs no record (F-23) | no NOT NULL link from verdict | `test_consistent_verdict_needs_no_record` | Implemented and verified |
+| Three alignment labels only | `ck_judgement_label` | `test_judgement_label_is_restricted_to_three_values` | Implemented and verified |
+| Judgement needs at least one side | `ck_judgement_has_at_least_one_side` | `test_judgement_requires_at_least_one_side`, `test_judgement_accepts_a_declaration_with_no_policy_side` | Implemented and verified |
+| Confidence is a probability | `ck_*_confidence_range` | `test_confidence_must_be_a_probability` (2 cases) | Implemented and verified |
+| Abstention stored at every stage | `abstained` columns | `test_abstention_is_a_column_on_every_stage`, `test_abstained_practice_is_stored_not_discarded` | Implemented and verified |
+| Queue states and their invariants (F-32) | `ck_audit_status`, `ck_audit_failed_has_reason`, `ck_audit_completed_has_timestamp` | `test_audit_status_is_restricted`, `test_failed_audit_must_record_why`, `test_completed_audit_must_have_a_completion_time` | Implemented and verified |
+| Thresholds recorded per run | `threshold_config` NOT NULL | `test_threshold_config_is_required` | Implemented and verified |
+| Snapshots in an audit must differ | `ck_audit_distinct_snapshots` | `test_audit_cannot_compare_a_snapshot_with_itself` | Implemented and verified |
+| Documents on disk, not in the database | `storage_path`, `content_sha256` | `test_policy_documents_are_not_stored_in_the_database`, `test_snapshot_hash_must_be_a_full_sha256` | Implemented and verified |
+| ALG-11 functional lower() indexes | `ix_application_lower_name`, `ix_application_lower_package` | `test_case_insensitive_search_indexes_exist` | Implemented and verified |
+| Segment and span offsets ordered | `ck_*_offsets_ordered` | `test_segment_offsets_must_be_ordered`, `test_span_offsets_must_be_ordered` | Implemented and verified |
+| Metrics declare abstention handling | `ck_metric_abstention_handling`, `uq_metric_unique_per_run` | `test_metric_must_declare_how_abstentions_were_handled`, `test_both_abstention_handlings_coexist_for_one_metric` | Implemented and verified |
+| Cascade deletes leave no orphans | `ondelete` clauses | `test_cascade_delete_removes_dependent_rows` | Implemented and verified |
+| Baseline migration | `backend/migrations/versions/0001_baseline_schema.py` | `test_migration_baseline.py` (2 tests) | Implemented and verified on SQLite |
+| Schema on PostgreSQL (JSONB, BIGINT, functional indexes) | same | `test_postgresql_schema_is_not_verified_here` — skipped | **Not verified** — no PostgreSQL in this environment |
+
+### Repositories and persistence functions
+
+The tables exist; the functions that read and write them do not. F-04, F-05,
+F-28 and F-34 were listed against Milestone 2 in the plan, but only their
+storage is in place. They remain Not implemented and move with Milestone 8.
 
 ## F-26 — Scope statement
 

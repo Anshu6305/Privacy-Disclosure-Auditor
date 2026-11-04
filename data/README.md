@@ -24,8 +24,6 @@ data/
   goldset/
     annotations/            per-annotator gold labels, four labels only
     adjudicated/            agreed gold set used by F-31
-  taxonomy/
-    mapping_v1.json         OPP-115 category to Data Safety category mapping (F-15)
 ```
 
 ## OPP-115
@@ -54,6 +52,15 @@ Policy documents live on the filesystem under `policies/raw/`, named by the
 SHA-256 of their bytes, with the path and hash recorded in the
 `disclosure_snapshot` table. The database stores no document bodies. This
 follows Phase 3 Section 10 and keeps the database small enough to dump.
+
+## Not in this directory
+
+The OPP-115 to Data Safety taxonomy mapping (F-15) is **not** here. It is the
+team's own authored artefact, it must be version-controlled and reviewable, and
+everything under `data/` is git-ignored. It lives at
+`analysis/mapping/taxonomy/` and is seeded into the
+`taxonomy_mapping_version` and `taxonomy_mapping_entry` tables. It is built in
+Milestone 7.
 
 ## Rules
 
