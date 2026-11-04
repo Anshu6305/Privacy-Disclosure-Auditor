@@ -314,3 +314,136 @@ and more reproducible fix.
 
 **Status:** resolved. No requirement or design change; recorded here because it
 changes the documented development environment.
+
+---
+
+## Execution-order adjustment — 2026-11-04
+
+### C-19 Milestone 7 implemented ahead of Milestones 3 to 6
+
+**Approved design:** unaffected. The Phase 3 WBS fixes what each milestone
+delivers, not the order in which they are built.
+
+**What happened:** The team approved implementing M7, the verdict and evidence
+engine, before M3 acquisition, M4 text processing, M5 baseline ML and M6
+improved ML. The reason is that M7's logic is deterministic: it depends on no
+dataset, no network access and no trained model, so it can be written and
+tested in full while those milestones are blocked on data.
+
+**Scope of the adjustment:** order of execution only.
+
+- M3, M4, M5 and M6 are **not** completed, skipped, merged or reduced.
+- Their functions remain Not implemented in the traceability document.
+- The milestone definitions in the master plan are unchanged.
+
+**Dependency acknowledged:** M7 consumes alignment judgements produced by F-18,
+which belongs to M6. Until M6 exists, judgements come only from controlled test
+fixtures. Nothing in M7 produces, approximates or simulates a model prediction,
+and no upstream component is represented as implemented.
+
+**Status:** execution order adjusted with team approval; no design change.
+
+---
+
+## Milestone 7 — 2026-11-04
+
+### C-20 ALG-8 implemented as five ordered steps
+
+**Approved design:** Phase 3 ALG-8 — contradiction first; decisive support
+resolved against the declaration state; abstention; the absence rule; neither
+source mentioning the category treated as Consistent.
+
+**What happened:** `assign_category_verdict` runs the five steps in sequence,
+each written out separately with the condition it tests. The order was not
+simplified, reordered or collapsed into a single expression, because the order
+is what the algorithm consists of.
+
+**Verification:** one test per step plus four precedence tests that put two
+conditions in conflict and assert the higher-precedence one wins.
+
+**Status:** consistent.
+
+### C-21 Abstention precedes the absence rule
+
+**Approved design:** design issue DI-3, resolved in Phase 3 by ordering ALG-8 so
+abstention is considered before any absence claim.
+
+**What happened:** Step 3 sits above step 4. A declared category whose only
+policy statement was abstained ends as Undetermined, not
+Declared-not-in-policy. The same holds for an undeclared category: an abstained
+reading yields Undetermined rather than Consistent, because the uncertain
+statement might have been an In-policy-not-declared finding.
+
+**Verification:** `test_abstention_beats_the_absence_rule` and
+`test_abstention_beats_neither_source_mentions` assert both the verdict that
+must be produced and the verdict that must not.
+
+**Status:** consistent. This is the rule that satisfies the standing
+requirement that an uncertain upstream judgement never becomes a confident
+absence finding.
+
+### C-22 Abstention propagation made structural
+
+**Approved design:** `judgement.abstained <- judgement.abstained OR
+sourcePractice.abstained`, propagating through F-14, F-15, F-17 and F-18.
+
+**What happened:** `AlignmentJudgement.abstained` is a property rather than a
+stored field. It reads the model's own flag **or** the candidate's upstream
+flag, and the candidate reads through to the mapped practice, which reads
+through to the policy practice. There is no code path that can produce a
+judgement that appears confident while resting on an uncertain input, because
+the propagation is in the type rather than in a step a caller could omit.
+
+**Verification:** a judgement stated as SUPPORTS at 0.99 confidence, built on a
+practice abstained at 0.3, reports `abstained is True` and `is_decisive is
+False`, and the category ends Undetermined.
+
+**Status:** consistent, and stronger than the design required. Phase 3
+specified the rule; this makes it unskippable.
+
+### C-23 Evidence is sliced from the policy, never composed
+
+**Approved design:** F-20 — evidence is verbatim and never generated.
+
+**What happened:** An evidence record carries the stored segment's own text and
+that segment's own offsets. `PolicySegmentRef` refuses to exist unless
+`char_end - char_start` equals the length of its text, and `EvidenceRecord`
+refuses an evidence record whose offsets do not match its quote. A test
+reconstructs the document and confirms that the text found at each record's
+offsets is exactly the quoted text.
+
+**Status:** consistent.
+
+### C-24 The two kinds of Consistent are distinguishable, with no schema change
+
+**Approved design:** Consistent covers both affirmative agreement and neither
+source mentioning the category. Both are consistent, but they mean different
+things to a reader.
+
+**What happened:** `CategoryVerdict.consistency_basis` returns
+`affirmative_agreement` or `neither_source_mentions`, derived from the
+`declared` and `found_in_policy` values. Those two are already columns on the
+`verdict` table, so the distinction is recoverable from stored data and **no
+schema change was needed**.
+
+**Status:** consistent. No design change requested.
+
+### C-25 An unrecognised Data Safety category stops the audit
+
+**Approved design:** the vocabulary deliberately has no database CHECK on
+`ds_category`, so a change to Google's taxonomy surfaces as a named pipeline
+failure (F-33) rather than a database rejection mid-run.
+
+**What happened:** `normalise_declaration` raises
+`UnknownDataSafetyCategoryError` naming the category. Dropping the line
+silently would produce a report that looked complete while omitting a whole
+category.
+
+**Status:** consistent with the C-09 reasoning. The F-33 handler that catches
+this and records it on the audit run is Milestone 8 work.
+
+### No design or schema changes
+
+Milestone 7 required no change to the sixteen-table schema, the API design, or
+any FR, NFR, GI or function identifier. Nothing is pending the team's approval
+from this milestone.

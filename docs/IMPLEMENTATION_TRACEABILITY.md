@@ -15,7 +15,7 @@ A row is never promoted to "Implemented and verified" because the code looks
 finished. The test must have run. Where a status says verified, the test
 identifier in the same row is the evidence.
 
-Last updated: 2026-11-04 (Milestone 2)
+Last updated: 2026-11-04 (Milestone 7)
 
 ---
 
@@ -90,6 +90,84 @@ because it has to exist before anything can display a finding.
 
 ---
 
+## Milestone 7 — Verdict and evidence engine
+
+Implemented ahead of Milestones 3 to 6 with team approval; see C-19. Those
+milestones remain outstanding.
+
+F-18 is **not** implemented. The engine consumes alignment judgements; in the
+current codebase those come only from controlled test fixtures.
+
+| F-id | Design unit | Code | Test | Status |
+|---|---|---|---|---|
+| F-14 | Confidence thresholding, ALG-4 | `analysis/confidence/gate.py` | `test_pipeline_stages.py` (6 tests), `test_type_invariants.py::test_gate_rejects_a_threshold_that_is_not_a_probability` | Implemented and verified |
+| F-15 | Taxonomy mapping, ALG-5 | `analysis/mapping/taxonomy_mapper.py` | `test_pipeline_stages.py` (7 tests) | Implemented and verified |
+| F-16 | Declaration normalisation | `analysis/mapping/declaration_normaliser.py` | `test_pipeline_stages.py` (4 tests) | Implemented and verified |
+| F-17 | Candidate construction, ALG-6 | `analysis/mapping/candidate_builder.py` | `test_pipeline_stages.py` (7 tests) | Implemented and verified |
+| F-18 | Semantic alignment | — | — | **Not implemented** — Milestone 6, decision D-01 |
+| F-19 | Verdict assignment, ALG-8 | `analysis/verdict/verdict_engine.py` | `test_verdict_engine.py` (25 tests) | Implemented and verified |
+| F-20 | Evidence selection, ALG-9 | `analysis/verdict/evidence_selector.py` | `test_evidence_records.py` (8 tests) | Implemented and verified |
+| F-21 | Absence recording | `analysis/verdict/absence_recorder.py` | `test_evidence_records.py` (4 tests) | Implemented and verified |
+| F-22 | Inconclusive recording | `analysis/verdict/inconclusive_recorder.py` | `test_evidence_records.py` (4 tests) | Implemented and verified |
+
+### ALG-8 precedence, step by step
+
+| Step | Condition | Verdict | Test |
+|---|---|---|---|
+| 1 | Any trusted CONTRADICTS | Contradictory | `test_contradictory`, `test_contradiction_beats_support`, `test_contradiction_beats_support_regardless_of_confidence`, `test_contradiction_beats_abstention` |
+| 2a | Trusted SUPPORTS and declared | Consistent (affirmative agreement) | `test_consistent_by_affirmative_agreement`, `test_support_beats_abstention` |
+| 2b | Trusted SUPPORTS, not declared | In-policy-not-declared | `test_in_policy_not_declared` |
+| 3 | Any abstained judgement | Undetermined | `test_undetermined_when_the_only_judgement_abstained`, `test_abstention_beats_the_absence_rule`, `test_abstention_beats_neither_source_mentions` |
+| 4 | Declared, nothing found | Declared-not-in-policy | `test_declared_not_in_policy`, `test_declared_not_in_policy_with_no_judgements_at_all`, `test_trusted_no_match_does_not_block_the_absence_rule` |
+| 5 | Not declared, nothing found | Consistent (neither source mentions) | `test_consistent_because_neither_source_mentions_the_category`, `test_every_category_receives_a_verdict` |
+
+The distinction required under Consistent is held by
+`CategoryVerdict.consistency_basis` and tested by
+`test_the_two_kinds_of_consistent_are_distinguishable`. It is derived from the
+`declared` and `found_in_policy` columns the schema already has, so recording
+it needed no schema change.
+
+### Abstention propagation
+
+`AlignmentJudgement.abstained` is a property, true when the alignment model
+abstained **or** when the candidate carried an abstained policy practice. The
+propagation is therefore structural: no caller can build a confident-looking
+judgement on an uncertain input.
+
+| Property | Test |
+|---|---|
+| Upstream abstention survives a 0.99-confidence SUPPORTS | `test_upstream_abstention_propagates_even_at_high_confidence` |
+| Upstream abstention also blocks a contradiction | `test_upstream_abstention_blocks_a_contradiction_too` |
+| Mapping does not launder abstention | `test_mapping_preserves_abstention`, `test_map_all_keeps_abstained_practices` |
+| The gate flags rather than deletes | `test_gate_flags_rather_than_deletes`, `test_gate_keeps_every_input` |
+| Abstention is sticky | `test_abstention_is_sticky` |
+| Candidates carry it forward | `test_candidates_carry_upstream_abstention` |
+| Abstention recorded even when it changes no verdict | `test_abstention_is_recorded_even_when_it_does_not_change_the_verdict` |
+| An abstained judgement never establishes policy content | `test_found_in_policy_is_false_when_only_abstained_judgements_exist` |
+
+### Evidence integrity
+
+| Property | Test |
+|---|---|
+| Quotes are verbatim policy text | `test_evidence_quotes_the_policy_text_verbatim` |
+| Offsets locate the quote in the document | `test_evidence_offsets_locate_the_quote_in_the_document`, `test_evidence_offsets_point_at_the_real_text` |
+| An abstained judgement cannot support evidence | `test_an_abstained_judgement_cannot_support_evidence` |
+| Absence records carry no quote | `test_absence_record_has_no_quote_and_states_a_reason` |
+| Absence reasons assert no wrongdoing | `test_absence_reason_does_not_assert_wrongdoing` |
+| Consistent verdicts carry no records | `test_consistent_verdict_carries_no_records` |
+| Record type always matches the verdict | `test_record_types_match_the_verdict_in_every_case` |
+| Ordering is deterministic | `test_ties_are_broken_deterministically` |
+
+### Measured
+
+169 passed, 1 skipped. Statement coverage of the `analysis` package: **100%**
+(383 statements).
+
+### Still not implemented after M7
+
+F-01 to F-13 and F-23 to F-34 remain Not implemented. Milestones 3, 4, 5, 6, 8,
+9 and 10 are outstanding.
+
 ## Functions F-01 to F-34
 
 Module targets are fixed by plan §3. All are Not implemented at the end of
@@ -110,15 +188,15 @@ Milestone 1 except F-26 above.
 | F-11 | `analysis/models/practice_classifier.py` | M5, M6 | Not implemented |
 | F-12 | `analysis/models/span_extractor.py` | M6 | Not implemented |
 | F-13 | `analysis/models/variant.py` | M6 | Not implemented |
-| F-14 | `analysis/confidence/gate.py` | M7 | Not implemented |
-| F-15 | `analysis/mapping/taxonomy_mapper.py` | M7 | Not implemented |
-| F-16 | `analysis/mapping/declaration_normaliser.py` | M7 | Not implemented |
-| F-17 | `analysis/mapping/candidate_builder.py` | M7 | Not implemented |
+| F-14 | `analysis/confidence/gate.py` | M7 | Implemented and verified |
+| F-15 | `analysis/mapping/taxonomy_mapper.py` | M7 | Implemented and verified |
+| F-16 | `analysis/mapping/declaration_normaliser.py` | M7 | Implemented and verified |
+| F-17 | `analysis/mapping/candidate_builder.py` | M7 | Implemented and verified |
 | F-18 | `analysis/models/semantic_aligner.py` | M6 | Blocked — no training data; decision pending (plan §7) |
-| F-19 | `analysis/verdict/verdict_engine.py` | M7 | Not implemented |
-| F-20 | `analysis/verdict/evidence_selector.py` | M7 | Not implemented |
-| F-21 | `analysis/verdict/absence_recorder.py` | M7 | Not implemented |
-| F-22 | `analysis/verdict/inconclusive_recorder.py` | M7 | Not implemented |
+| F-19 | `analysis/verdict/verdict_engine.py` | M7 | Implemented and verified |
+| F-20 | `analysis/verdict/evidence_selector.py` | M7 | Implemented and verified |
+| F-21 | `analysis/verdict/absence_recorder.py` | M7 | Implemented and verified |
+| F-22 | `analysis/verdict/inconclusive_recorder.py` | M7 | Implemented and verified |
 | F-23 | `backend/app/services/report_assembler.py` | M8 | Not implemented |
 | F-24 | `frontend/src/pages/ReportPage.jsx` | M9 | Not implemented |
 | F-25 | `frontend/src/components/EvidencePanel.jsx` | M9 | Not implemented |

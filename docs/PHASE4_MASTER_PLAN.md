@@ -143,6 +143,23 @@ Milestones follow the approved Phase 3 WBS. Dependencies are real, not arbitrary
 
 M1, M2, M4, M7, M8 and M9 can be built without waiting for any dataset. That is most of the system. M3, M5 and M6 need the team to supply data.
 
+### Execution-order adjustment — approved 2026-11-04
+
+Milestone 7 is being implemented **before** Milestones 3, 4, 5 and 6, on the
+team's approval, because its logic is deterministic and can be developed and
+tested in isolation from acquisition and from any model.
+
+This changes the **order** of execution only. M3, M4, M5 and M6 remain
+outstanding work and are **not** completed, skipped or reduced in scope by
+this. The milestone table above still governs what each of them must deliver,
+and the traceability document continues to show their functions as Not
+implemented.
+
+Dependency note: M7 consumes alignment judgements as inputs. Those judgements
+are produced by F-18, which belongs to M6. Until M6 exists, the only
+judgements in the system come from controlled test fixtures. No part of M7
+produces or simulates a model prediction.
+
 ---
 
 ## 6. Database implementation sequence

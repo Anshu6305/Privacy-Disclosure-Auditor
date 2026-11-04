@@ -30,7 +30,7 @@ Faculty Guide: _[to be filled in]_
 | M4 Text processing | R3 | Not started | |
 | M5 Baseline ML | R3 | Ready | OPP-115 is in place and verified |
 | M6 Improved ML | R1, R3 | Blocked | Alignment training-data decision pending |
-| M7 Verdict and evidence engine | R1 | Not started | No external dependency; can run in parallel |
+| M7 Verdict and evidence engine | R1 | Complete | F-14 to F-17, F-19 to F-22; 101 tests, 100% coverage of analysis/. F-18 excluded, stays in M6 |
 | M8 Backend integration | R4 | Not started | |
 | M9 Frontend | R6 | Not started | |
 | M10 Integration and deployment | all | Not started | |

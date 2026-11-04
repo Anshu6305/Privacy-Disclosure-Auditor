@@ -219,3 +219,67 @@ run against.
 Cleared the `pytest-asyncio` deprecation warning by setting
 `asyncio_default_fixture_loop_scope = "function"` in `pyproject.toml`, so the
 suite will not change behaviour when that default changes upstream.
+
+---
+
+## 2026-11-04 — Milestone 7: Verdict and evidence engine
+
+Implemented ahead of M3 to M6 with team approval (C-19). Those milestones
+remain outstanding and nothing in them is complete.
+
+### Built
+
+| Function | Module |
+|---|---|
+| F-14 confidence gate, ALG-4 | `analysis/confidence/gate.py` |
+| F-15 taxonomy mapping, ALG-5 | `analysis/mapping/taxonomy_mapper.py` |
+| F-16 declaration normalisation | `analysis/mapping/declaration_normaliser.py` |
+| F-17 candidate construction, ALG-6 | `analysis/mapping/candidate_builder.py` |
+| F-19 verdict assignment, ALG-8 | `analysis/verdict/verdict_engine.py` |
+| F-20 evidence selection, ALG-9 | `analysis/verdict/evidence_selector.py` |
+| F-21 absence recording | `analysis/verdict/absence_recorder.py` |
+| F-22 inconclusive recording | `analysis/verdict/inconclusive_recorder.py` |
+| Domain types | `analysis/verdict/models.py` |
+
+Tests: `tests/unit/test_verdict_engine.py` (25),
+`test_evidence_records.py` (27), `test_pipeline_stages.py` (24),
+`test_type_invariants.py` (22), `test_verdict_pipeline.py` (3), and
+`tests/unit/fixtures_verdict.py` for the controlled inputs.
+
+### Verified
+
+| Check | Command | Result |
+|---|---|---|
+| Full suite | `pytest tests` | 169 passed, 1 skipped |
+| M7 tests only | `pytest tests/unit/test_verdict_engine.py tests/unit/test_evidence_records.py tests/unit/test_pipeline_stages.py tests/unit/test_type_invariants.py tests/unit/test_verdict_pipeline.py` | 101 passed |
+| Coverage | `pytest tests --cov=analysis` | **100%** of 383 statements |
+| Lint | `ruff check .` | All checks passed |
+
+Coverage reaching 100% was not the goal and is not by itself evidence of
+correctness. It is reported because the uncovered lines at 95% were all guard
+clauses, and a guard that never runs in a test is not a guarantee.
+
+### Notes on the implementation
+
+- **F-18 is not implemented.** The engine consumes alignment judgements. Every
+  judgement in the test suite is written by hand with a stated label and
+  confidence. No model is called, approximated or simulated.
+- **Abstention propagation is in the type, not in a function.**
+  `AlignmentJudgement.abstained` is a property reading the model's flag or the
+  candidate's upstream flag. A judgement stated as SUPPORTS at 0.99 built on a
+  practice abstained at 0.34 still reports abstained and is not decisive.
+- **No schema or API change.** `consistency_basis` is derived from the
+  `declared` and `found_in_policy` columns the `verdict` table already carries.
+
+### Found while writing the tests
+
+- The `PolicySegmentRef` offset invariant caught an off-by-one in a test
+  string before any production code used it — a 22-character sentence was
+  given a 21-character span. That is the class of error the invariant exists
+  to stop, since every evidence quote taken from a segment depends on it.
+
+### Deliberately out of scope
+
+F-18, and all of Milestones 3, 4, 5, 6, 8, 9 and 10. Persisting verdicts to the
+database is F-28 and belongs to Milestone 8; the engine returns domain objects
+and writes nothing.
