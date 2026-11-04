@@ -165,3 +165,31 @@ docker compose up -d database
 cd backend && alembic upgrade head
 pytest -m integration
 ```
+
+---
+
+## 2026-11-04 — Environment: Python version constraint
+
+First setup attempt on the team machine (macOS, Apple Silicon, CPython 3.14.4)
+failed. `pip install -r backend/requirements.txt -r backend/requirements-dev.txt`
+aborted while generating metadata for scipy:
+
+```
+../scipy/meson.build:216:9: ERROR: Dependency lookup for OpenBLAS with method
+'pkg-config' failed: Pkg-config for machine host machine not found. Giving up.
+error: metadata-generation-failed
+```
+
+pip installs all requirements as one transaction, so nothing was installed and
+both `pytest` and `alembic` remained absent — which is what the earlier
+"command not found" messages were.
+
+The cause was the Python version, not a missing system library. Resolved by
+narrowing the supported range to 3.10 to 3.13, moving the container to
+`python:3.12-slim` so development and container agree, documenting the
+requirement in the README, and adding a `conftest.py` guard that reports the
+problem in one sentence. Recorded as C-18.
+
+Verified after the change: 68 passed, 1 skipped; `ruff check .` clean. These
+runs are on the authoring environment's CPython 3.10.12. **The suite has not
+yet been run on the team machine** — that is the next step, on Python 3.12.

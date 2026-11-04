@@ -40,8 +40,11 @@ Faculty Guide: _[to be filled in]_
 1. Decide the F-18 alignment training-data approach — master plan §7.
 2. Confirm encoder checkpoints for the three learning tasks.
 3. Schedule the 300 to 500 app Play Store collection, rate-limited per NFR-15.
-4. Install Docker Desktop and PostgreSQL on at least one machine and run
-   `docker compose up --build`.
+4. Install Docker Desktop on at least one machine and run
+   `docker compose up --build`. PostgreSQL runs in a container and does not
+   need a separate install.
+8. Build every virtual environment on Python 3.12. Python 3.14 breaks the
+   install; see C-18 in the consistency log.
 5. Confirm free-tier GPU access for the three training runs.
 6. Check PolicyIE and PI-Extract licence terms.
 7. Provide member names to replace the placeholders above.

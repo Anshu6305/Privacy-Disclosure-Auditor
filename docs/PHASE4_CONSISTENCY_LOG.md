@@ -272,3 +272,45 @@ a third-party dataset, and the report cites it.
 `data/README.md` are corrected.
 
 **Status:** plan corrected; no design change.
+
+---
+
+## Environment finding — 2026-11-04
+
+### C-18 Supported Python version narrowed to 3.10 to 3.13
+
+**Approved design:** Phase 3 names Python as the backend language. No version
+is fixed by the approved documents, so this is an implementation constraint
+rather than a design change.
+
+**What happened:** Setup on the team machine failed. `pip install` aborted on
+`scipy` with `metadata-generation-failed` and a meson error reporting OpenBLAS
+and pkg-config missing. The machine runs CPython 3.14.4.
+
+**Cause:** The pinned scientific stack — numpy 2.2.1, scipy 1.14.1,
+scikit-learn 1.6.0, pandas 2.2.3 — publishes wheels for CPython 3.10 to 3.13.
+On 3.14 pip finds no wheel and falls back to compiling scipy from source, which
+needs a Fortran toolchain and OpenBLAS that a stock macOS does not have. The
+error names scipy and OpenBLAS and never mentions the Python version, which is
+what made it look like a missing system library.
+
+**Resolution:**
+
+- `pyproject.toml` now declares `requires-python = ">=3.10,<3.14"`, with the
+  reason recorded in a comment so the upper bound is not removed as excess
+  caution.
+- The container image moved from `python:3.11-slim` to `python:3.12-slim`, so
+  local development and the container run the same minor version and a result
+  cannot differ between them.
+- `README.md` states the version requirement, explains why, and tells the reader
+  to check `python3 --version` before anything else.
+- `tests/conftest.py` raises a clear `UsageError` on 3.14 or newer, so the next
+  person meets one sentence instead of a meson build log.
+
+**Not done:** installing OpenBLAS to make the source build work. Compiling
+scipy per machine is fragile, slow, and would differ across six machines and
+the grading environment. Matching the container's interpreter is the smaller
+and more reproducible fix.
+
+**Status:** resolved. No requirement or design change; recorded here because it
+changes the documented development environment.

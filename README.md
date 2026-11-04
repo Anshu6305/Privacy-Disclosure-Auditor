@@ -81,11 +81,32 @@ data/         Datasets and corpora — never committed, see data/README.md
 
 ## Setup
 
-Requires Python 3.10+, Node 18+, Docker Desktop and PostgreSQL 15+.
+Requires **Python 3.12**, Node 18+, and Docker Desktop (PostgreSQL runs in a
+container, so it does not need installing separately).
+
+Python 3.12 is not a preference. The pinned scientific packages publish wheels
+for CPython 3.10 to 3.13 only. On 3.14 pip tries to compile scipy from source,
+which needs OpenBLAS and pkg-config and fails on a stock macOS install. 3.12 is
+also what the container runs, so local results and container results match.
+
+Check first, because a newer Python is the most likely cause of a failed setup:
+
+```bash
+python3 --version
+```
+
+If it is not 3.12, install it (macOS, Homebrew):
+
+```bash
+brew install python@3.12
+```
+
+Then build the environment with that interpreter explicitly — `python3` may
+still point at a newer version:
 
 ```bash
 # 1. Backend environment
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt -r backend/requirements-dev.txt
 
@@ -94,7 +115,7 @@ cp .env.example .env
 # edit .env and set a local database password
 
 # 3. Datasets — see data/README.md, nothing is downloaded automatically
-python ml/data/verify_opp115.py
+python ml/data/verify_opp115.py --write-manifest
 
 # 4. Frontend
 cd frontend && npm install && cd ..

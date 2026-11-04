@@ -2,7 +2,12 @@
 name = "privacy-disclosure-auditor"
 version = "0.1.0"
 description = "Cross-Source Privacy Disclosure Consistency Auditor for Android Applications"
-requires-python = ">=3.10"
+# Upper bound is a real constraint, not caution. The pinned scientific stack
+# (numpy 2.2.1, scipy 1.14.1, scikit-learn 1.6.0, pandas 2.2.3) publishes
+# wheels up to CPython 3.13. On 3.14 pip falls back to building scipy from
+# source, which needs OpenBLAS and pkg-config and fails on a stock macOS.
+# Recommended: 3.12, which is what the container runs.
+requires-python = ">=3.10,<3.14"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -16,7 +21,7 @@ markers = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 exclude = [".venv", "data", "frontend", "backend/migrations/versions"]
 
 [tool.ruff.lint]
@@ -24,7 +29,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 warn_unused_ignores = true
 ignore_missing_imports = true
 exclude = ["data/", "frontend/", "backend/migrations/"]
