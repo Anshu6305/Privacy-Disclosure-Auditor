@@ -13,6 +13,11 @@ requires-python = ">=3.10,<3.14"
 testpaths = ["tests"]
 pythonpath = [".", "backend"]
 addopts = "-q --strict-markers"
+
+# pytest-asyncio warns when this is unset and will change its default in a
+# future release. Set explicitly so the suite behaves the same before and
+# after that change.
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: requires a running PostgreSQL instance",
     "ml: requires model weights or the ML dependency set",

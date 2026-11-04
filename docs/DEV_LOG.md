@@ -193,3 +193,29 @@ problem in one sentence. Recorded as C-18.
 Verified after the change: 68 passed, 1 skipped; `ruff check .` clean. These
 runs are on the authoring environment's CPython 3.10.12. **The suite has not
 yet been run on the team machine** — that is the next step, on Python 3.12.
+
+---
+
+## 2026-11-04 — Verified on the team machine
+
+Environment rebuilt on CPython 3.12 (Homebrew `python@3.12`) on macOS, Apple
+Silicon. All dependencies installed from wheels; scipy 1.14.1 downloaded rather
+than compiled, confirming C-18's diagnosis.
+
+```
+68 passed, 1 skipped, 1 warning in 1.16s
+```
+
+Installed set recorded from the run: SQLAlchemy 2.0.36, alembic 1.14.0,
+fastapi 0.115.6, pydantic 2.10.4, numpy 2.2.1, scipy 1.14.1,
+scikit-learn 1.6.0, pandas 2.2.3, psycopg 3.2.3, pytest 8.3.4, ruff 0.8.4 —
+matching the pinned requirements.
+
+The suite now passes on two independent machines and two Python versions
+(3.10.12 in the authoring environment, 3.12 on the team machine). The one
+skipped test remains the PostgreSQL schema check, which still has no server to
+run against.
+
+Cleared the `pytest-asyncio` deprecation warning by setting
+`asyncio_default_fixture_loop_scope = "function"` in `pyproject.toml`, so the
+suite will not change behaviour when that default changes upstream.
