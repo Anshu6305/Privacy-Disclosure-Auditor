@@ -1,0 +1,450 @@
+"""Real PostgreSQL verification.
+
+Everything else in this suite runs on SQLite, which cannot check the things
+that matter most about the production schema: JSONB, BIGINT, functional
+indexes, and whether PostgreSQL itself enforces the 28 CHECK constraints rather
+than merely accepting their declaration.
+
+**Safety.** These tests touch only a database the caller names explicitly in
+``TEST_DATABASE_URL``, and only one whose name ends in ``_test``. With the
+variable unset every test skips. There is no fallback to ``.env`` and no
+default, so the project database cannot be reached by accident. Nothing here
+drops or truncates a table: each test runs inside a transaction that is rolled
+back, and ``drop_all`` appears nowhere in this file.
+
+To run them, see docs/PHASE4_SCHEMA_BASELINE_AUDIT.md Part 5.
+"""
+
+from __future__ import annotations
+
+import os
+
+import pytest
+from app.db.models import Base
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from analysis.vocabulary import VERDICT_UNDETERMINED
+
+pytestmark = pytest.mark.integration
+
+TEST_URL_VAR = "TEST_DATABASE_URL"
+
+#: The eleven tables whose primary key must be BIGINT in production. SQLite
+#: reports INTEGER for all of them because of the dialect variant, so this is
+#: checkable only here.
+BIGINT_PRIMARY_KEYS = {
+    "disclosure_snapshot": "snapshot_id",
+    "declared_practice": "declared_practice_id",
+    "policy_segment": "segment_id",
+    "extracted_practice": "extracted_practice_id",
+    "extracted_span": "span_id",
+    "audit_run": "audit_id",
+    "alignment_judgement": "judgement_id",
+    "verdict": "verdict_id",
+    "evidence_record": "evidence_record_id",
+    "gold_annotation": "gold_annotation_id",
+    "evaluation_metric": "evaluation_metric_id",
+}
+
+
+@pytest.fixture(scope="session")
+def pg_url() -> str:
+    url = os.environ.get(TEST_URL_VAR)
+    if not url:
+        pytest.skip(
+            f"{TEST_URL_VAR} is not set. These tests never guess a database; "
+            f"see docs/PHASE4_SCHEMA_BASELINE_AUDIT.md Part 5."
+        )
+
+    database = make_url(url).database or ""
+    if not database.endswith("_test"):
+        pytest.fail(
+            f"{TEST_URL_VAR} names the database {database!r}, which does not "
+            "end in '_test'. Refusing to run against a database that may be "
+            "the project's own."
+        )
+    return url
+
+
+@pytest.fixture(scope="session")
+def pg_engine(pg_url: str):
+    """An engine, or a skip.
+
+    ``create_engine`` is inside the try because it raises when the psycopg
+    driver is absent, which is the normal state for anyone who has not
+    installed the full requirements. That should skip like an unreachable
+    server, not produce an error for every test in the file.
+    """
+    try:
+        engine = create_engine(pg_url, future=True)
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception as exc:  # noqa: BLE001 - the type is the useful part
+        pytest.skip(f"PostgreSQL not usable here: {type(exc).__name__}: {exc}")
+    return engine
+
+
+@pytest.fixture
+def pg_session(pg_engine):
+    """A session whose work is always rolled back.
+
+    Even the dedicated test database is left exactly as it was found.
+    """
+    connection = pg_engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
+    try:
+        yield session
+    finally:
+        session.close()
+        transaction.rollback()
+        connection.close()
+
+
+# ---------------------------------------------------------------------------
+# 1. The migration ran and the schema is present
+# ---------------------------------------------------------------------------
+
+
+def test_alembic_baseline_has_been_applied(pg_engine):
+    with pg_engine.connect() as connection:
+        tables = set(inspect(pg_engine).get_table_names())
+        assert "alembic_version" in tables, (
+            "alembic_version is missing: run 'alembic upgrade head' against "
+            "the test database first"
+        )
+        revision = connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar()
+    assert revision == "0001_baseline"
+
+
+def test_all_sixteen_tables_exist(pg_engine):
+    present = set(inspect(pg_engine).get_table_names()) - {"alembic_version"}
+    assert present == set(Base.metadata.tables)
+    assert len(present) == 16
+
+
+# ---------------------------------------------------------------------------
+# 2. PostgreSQL-specific types, which SQLite cannot verify
+# ---------------------------------------------------------------------------
+
+
+def _udt_name(engine, table: str, column: str) -> str:
+    with engine.connect() as connection:
+        return connection.execute(
+            text(
+                "SELECT udt_name FROM information_schema.columns "
+                "WHERE table_name = :t AND column_name = :c"
+            ),
+            {"t": table, "c": column},
+        ).scalar()
+
+
+@pytest.mark.parametrize(
+    "table,column",
+    [("audit_run", "threshold_config"), ("model_version", "training_config")],
+)
+def test_json_columns_are_jsonb(pg_engine, table, column):
+    """JSON would work but would lose indexing and containment operators."""
+    assert _udt_name(pg_engine, table, column) == "jsonb"
+
+
+@pytest.mark.parametrize("table,column", sorted(BIGINT_PRIMARY_KEYS.items()))
+def test_high_volume_primary_keys_are_bigint(pg_engine, table, column):
+    """SQLite reports INTEGER for these because of the dialect variant, so
+    this is the only place the production width is checked."""
+    assert _udt_name(pg_engine, table, column) == "int8"
+
+
+def test_timestamps_carry_a_time_zone(pg_engine):
+    """A naive timestamp would make retrieval times ambiguous across the
+    team's machines."""
+    assert _udt_name(pg_engine, "audit_run", "requested_at") == "timestamptz"
+    assert _udt_name(pg_engine, "disclosure_snapshot", "retrieved_at") == "timestamptz"
+
+
+def test_verdict_confidence_is_numeric(pg_engine):
+    """Restored by audit finding E-5, with the approved numeric(5,4) type."""
+    assert _udt_name(pg_engine, "verdict", "confidence") == "numeric"
+
+
+# ---------------------------------------------------------------------------
+# 3. Functional indexes (ALG-11)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "index_name", ["ix_application_lower_name", "ix_application_lower_package"]
+)
+def test_functional_lower_indexes_exist(pg_engine, index_name):
+    with pg_engine.connect() as connection:
+        definition = connection.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = :n"),
+            {"n": index_name},
+        ).scalar()
+
+    assert definition is not None, f"{index_name} is missing"
+    assert "lower" in definition.lower(), (
+        f"{index_name} exists but is not a functional index on lower(); "
+        "ALG-11's case-insensitive prefix search would not use it"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 4. Constraints are present in the real catalogue
+# ---------------------------------------------------------------------------
+
+
+def _constraint_names(engine, contype: str) -> set[str]:
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT con.conname FROM pg_constraint con "
+                "JOIN pg_class rel ON rel.oid = con.conrelid "
+                "JOIN pg_namespace ns ON ns.oid = rel.relnamespace "
+                "WHERE con.contype = :t AND ns.nspname = 'public'"
+            ),
+            {"t": contype},
+        )
+        return {row[0] for row in rows}
+
+
+def test_every_declared_check_constraint_exists(pg_engine):
+    from sqlalchemy import CheckConstraint
+
+    expected = {
+        constraint.name
+        for table in Base.metadata.tables.values()
+        for constraint in table.constraints
+        if isinstance(constraint, CheckConstraint) and constraint.name
+    }
+    actual = _constraint_names(pg_engine, "c")
+    missing = expected - actual
+    assert not missing, f"CHECK constraints missing from PostgreSQL: {sorted(missing)}"
+
+
+def test_every_declared_unique_constraint_exists(pg_engine):
+    from sqlalchemy import UniqueConstraint
+
+    expected = {
+        constraint.name
+        for table in Base.metadata.tables.values()
+        for constraint in table.constraints
+        if isinstance(constraint, UniqueConstraint) and constraint.name
+    }
+    actual = _constraint_names(pg_engine, "u")
+    missing = expected - actual
+    assert not missing, f"UNIQUE constraints missing: {sorted(missing)}"
+
+
+def test_audit_run_foreign_keys_are_all_not_null(pg_engine):
+    with pg_engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT column_name, is_nullable FROM information_schema.columns "
+                "WHERE table_name = 'audit_run' AND column_name LIKE '%_id'"
+            )
+        ).all()
+
+    nullable = [name for name, is_nullable in rows if is_nullable == "YES"]
+    assert not nullable, f"these audit_run references are nullable: {nullable}"
+
+
+# ---------------------------------------------------------------------------
+# 5. PostgreSQL actually rejects invalid records
+#
+# The SQLite suite proves the constraints are declared. These prove the
+# database the system will run on enforces them.
+# ---------------------------------------------------------------------------
+
+
+def _seed(session: Session) -> dict:
+    from app.db.models import (
+        Application,
+        AuditRun,
+        DisclosureSnapshot,
+        ModelVersion,
+        TaxonomyMappingVersion,
+    )
+
+    suffix = os.urandom(4).hex()
+    app = Application(
+        package_name=f"com.test.{suffix}", app_name="Integration Test App"
+    )
+    session.add(app)
+    session.flush()
+
+    ds = DisclosureSnapshot(
+        app_id=app.app_id,
+        source_type="data_safety",
+        source_url="https://example.invalid/listing",
+        retrieval_method="test",
+        content_sha256="a" * 64,
+    )
+    policy = DisclosureSnapshot(
+        app_id=app.app_id,
+        source_type="privacy_policy",
+        source_url="https://example.invalid/privacy",
+        retrieval_method="test",
+        content_sha256="b" * 64,
+    )
+    mapping = TaxonomyMappingVersion(version_label=f"test-{suffix}")
+    models = [
+        ModelVersion(
+            task=task,
+            variant="baseline",
+            model_identifier="stub",
+            version_label=f"{task}-{suffix}",
+        )
+        for task in ("classification", "span_extraction", "alignment")
+    ]
+    session.add_all([ds, policy, mapping, *models])
+    session.flush()
+
+    audit = AuditRun(
+        app_id=app.app_id,
+        ds_snapshot_id=ds.snapshot_id,
+        policy_snapshot_id=policy.snapshot_id,
+        taxonomy_mapping_version_id=mapping.taxonomy_mapping_version_id,
+        classification_model_id=models[0].model_version_id,
+        span_model_id=models[1].model_version_id,
+        alignment_model_id=models[2].model_version_id,
+        status="queued",
+        threshold_config={"classifier": 0.5},
+    )
+    session.add(audit)
+    session.flush()
+    return {"app": app, "audit": audit}
+
+
+def test_postgresql_rejects_a_sixth_verdict_value(pg_session: Session):
+    from app.db.models import Verdict
+
+    seed = _seed(pg_session)
+    pg_session.add(
+        Verdict(
+            audit_id=seed["audit"].audit_id,
+            ds_category="Location",
+            verdict_value="Probably Fine",
+            declared=True,
+            found_in_policy=True,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        pg_session.flush()
+
+
+def test_postgresql_rejects_undetermined_in_the_gold_set(pg_session: Session):
+    from app.db.models import GoldAnnotation
+
+    seed = _seed(pg_session)
+    pg_session.add(
+        GoldAnnotation(
+            app_id=seed["app"].app_id,
+            ds_category="Location",
+            label=VERDICT_UNDETERMINED,
+            annotator_code="R1",
+        )
+    )
+    with pytest.raises(IntegrityError):
+        pg_session.flush()
+
+
+def test_postgresql_rejects_evidence_without_a_quote(pg_session: Session):
+    from app.db.models import EvidenceRecord, Verdict
+
+    seed = _seed(pg_session)
+    verdict = Verdict(
+        audit_id=seed["audit"].audit_id,
+        ds_category="Personal info",
+        verdict_value="Contradictory",
+        declared=True,
+        found_in_policy=True,
+    )
+    pg_session.add(verdict)
+    pg_session.flush()
+
+    pg_session.add(
+        EvidenceRecord(
+            verdict_id=verdict.verdict_id,
+            record_type="evidence",
+            reason="the policy says so",
+        )
+    )
+    with pytest.raises(IntegrityError):
+        pg_session.flush()
+
+
+def test_postgresql_rejects_an_absence_record_carrying_a_quote(pg_session: Session):
+    from app.db.models import EvidenceRecord, Verdict
+
+    seed = _seed(pg_session)
+    verdict = Verdict(
+        audit_id=seed["audit"].audit_id,
+        ds_category="Calendar",
+        verdict_value="Declared-not-in-policy",
+        declared=True,
+        found_in_policy=False,
+    )
+    pg_session.add(verdict)
+    pg_session.flush()
+
+    pg_session.add(
+        EvidenceRecord(
+            verdict_id=verdict.verdict_id,
+            record_type="absence",
+            reason="nothing found",
+            quoted_text="no mention of the calendar anywhere",
+        )
+    )
+    with pytest.raises(IntegrityError):
+        pg_session.flush()
+
+
+def test_postgresql_rejects_two_verdicts_for_one_category(pg_session: Session):
+    from app.db.models import Verdict
+
+    seed = _seed(pg_session)
+    for value in ("Consistent", "Contradictory"):
+        pg_session.add(
+            Verdict(
+                audit_id=seed["audit"].audit_id,
+                ds_category="Messages",
+                verdict_value=value,
+                declared=True,
+                found_in_policy=True,
+            )
+        )
+    with pytest.raises(IntegrityError):
+        pg_session.flush()
+
+
+def test_postgresql_rejects_a_failed_audit_without_a_reason(pg_session: Session):
+    seed = _seed(pg_session)
+    seed["audit"].status = "failed"
+    seed["audit"].failure_reason = None
+    with pytest.raises(IntegrityError):
+        pg_session.flush()
+
+
+def test_postgresql_rejects_an_out_of_range_verdict_confidence(pg_session: Session):
+    """Audit finding E-5's CHECK, enforced by the real database."""
+    from app.db.models import Verdict
+
+    seed = _seed(pg_session)
+    pg_session.add(
+        Verdict(
+            audit_id=seed["audit"].audit_id,
+            ds_category="Contacts",
+            verdict_value="Contradictory",
+            declared=True,
+            found_in_policy=True,
+            confidence=1.5,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        pg_session.flush()

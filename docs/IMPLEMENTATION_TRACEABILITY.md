@@ -18,11 +18,13 @@ identifier in the same row is the evidence.
 Last updated: 2026-11-04 (post-M7 baseline audit)
 
 > **Schema status.** `docs/PHASE4_SCHEMA_BASELINE_AUDIT.md` compares the
-> implemented schema against the approved Phase 3 Section 10.2 data dictionary
-> and records 7 structural deviations and 6 omissions. Rows in this document
-> that say a table is implemented refer to the table as built, not to agreement
-> with the approved data dictionary. Nothing from that audit has been
-> implemented; it awaits team approval.
+> implemented schema against the approved Phase 3 Section 10.2 data dictionary.
+> The **six omissions (class E) are now restored**, except E-2 which depends on
+> finding D-1. The **seven structural deviations (class D) are unchanged and
+> still await the team's ruling**, as do the two contradictions found in the
+> approved report itself (DOC-1, DOC-2). Rows below describing a table as
+> implemented refer to the table as built; full agreement with the approved
+> data dictionary depends on the outstanding D decisions.
 
 ---
 
@@ -112,7 +114,7 @@ current codebase those come only from controlled test fixtures.
 | F-16 | Declaration normalisation | `analysis/mapping/declaration_normaliser.py` | `test_pipeline_stages.py` (4 tests) | Implemented and verified |
 | F-17 | Candidate construction, ALG-6 | `analysis/mapping/candidate_builder.py` | `test_pipeline_stages.py` (7 tests) | Implemented and verified |
 | F-18 | Semantic alignment | — | — | **Not implemented** — Milestone 6, decision D-01 |
-| F-19 | Verdict assignment, ALG-8 | `analysis/verdict/verdict_engine.py` | `test_verdict_engine.py` (25 tests) | **Partially implemented** — ALG-8 precedence verified; F-19 processing step 3 (verdict confidence) **not implemented**, see audit E-5 |
+| F-19 | Verdict assignment, ALG-8 | `analysis/verdict/verdict_engine.py` | `test_verdict_engine.py` (25), `test_verdict_confidence.py` (15) | Implemented and verified — precedence **and** step 3 verdict confidence |
 | F-20 | Evidence selection, ALG-9 | `analysis/verdict/evidence_selector.py` | `test_evidence_records.py` (8 tests) | Implemented and verified |
 | F-21 | Absence recording | `analysis/verdict/absence_recorder.py` | `test_evidence_records.py` (4 tests) | Implemented and verified |
 | F-22 | Inconclusive recording | `analysis/verdict/inconclusive_recorder.py` | `test_evidence_records.py` (4 tests) | Implemented and verified |
@@ -200,7 +202,7 @@ Milestone 1 except F-26 above.
 | F-16 | `analysis/mapping/declaration_normaliser.py` | M7 | Implemented and verified |
 | F-17 | `analysis/mapping/candidate_builder.py` | M7 | Implemented and verified |
 | F-18 | `analysis/models/semantic_aligner.py` | M6 | Blocked — no training data; decision pending (plan §7) |
-| F-19 | `analysis/verdict/verdict_engine.py` | M7 | Partially implemented — verdict confidence missing |
+| F-19 | `analysis/verdict/verdict_engine.py` | M7 | Implemented and verified |
 | F-20 | `analysis/verdict/evidence_selector.py` | M7 | Implemented and verified |
 | F-21 | `analysis/verdict/absence_recorder.py` | M7 | Implemented and verified |
 | F-22 | `analysis/verdict/inconclusive_recorder.py` | M7 | Implemented and verified |
@@ -222,3 +224,43 @@ Milestone 1 except F-26 above.
 Rows are added as each requirement's implementation begins, so that a row's
 presence means work has started on it. No requirement is recorded as
 implemented at the end of Milestone 1.
+
+---
+
+## Baseline audit corrections — class E restorations
+
+| Finding | Restored | Code | Test | Status |
+|---|---|---|---|---|
+| **E-5** `verdict.confidence` | Yes | `analysis/verdict/models.py`, `verdict_engine.py` (`_deciding_confidence`), `backend/app/db/models.py` | `test_verdict_confidence.py` (15), `test_schema.py::test_verdict_stores_a_nullable_confidence`, `::test_verdict_confidence_must_be_a_probability` | Implemented and verified |
+| **E-4** `extracted_span.model_version_id` | Yes | `backend/app/db/models.py` | `test_schema.py::test_span_records_the_extractor_that_produced_it` | Implemented and verified |
+| **E-1** `application.store_category` | Yes | `backend/app/db/models.py` | `test_schema.py::test_restored_dictionary_columns_exist` | Implemented and verified |
+| **E-3** `extracted_practice.practice_type` | Column restored | `backend/app/db/models.py` | same | **Column present; value vocabulary undefined in Phase 3 and not invented.** Needs the team to define it |
+| **E-6** `evaluation_metric.scope` | Yes | `backend/app/db/models.py` | same | Column restored. **Does not by itself enable per-category metrics** — that is D-9 |
+| Index `gold_annotation(app_id, ds_category)` | Yes | `backend/app/db/models.py` | `test_schema.py::test_gold_annotation_index_covers_category` | Implemented and verified |
+| Index `DESC` orderings | Yes, both | `backend/app/db/models.py` | covered by schema creation | Implemented |
+| **E-2** `disclosure_snapshot.status` | **Not restored** | — | — | **Deferred: depends on decision D-1.** What a status means differs between one row per collection event and one row per source |
+
+### NFR-07 — confidence visibility
+
+| Layer | Status |
+|---|---|
+| Engine computes verdict confidence | Implemented and verified |
+| Database stores it as `NUMERIC(5,4)` nullable | Implemented, verified on SQLite |
+| API exposes it | **Not implemented** — endpoint E5, Milestone 8 |
+| Interface displays it | **Not implemented** — screen S4 and F-24, Milestone 9 |
+
+NFR-07 is **not yet satisfied end to end.** The value now exists and is
+computed correctly; nothing presents it to a user. The requirement closes in
+M8 and M9.
+
+## PostgreSQL verification
+
+| Item | Status |
+|---|---|
+| `tests/integration/test_postgresql_schema.py` | **Written — 29 tests** |
+| Executed against PostgreSQL | **No. Never run.** All 29 skip without `TEST_DATABASE_URL` |
+| Safety guards verified | Yes — a URL naming the project database fails with a refusal; a missing driver or unreachable server skips cleanly |
+
+The tests exist; the verification does not. Nothing in this project may
+describe the PostgreSQL schema as verified until these have run and their
+output is recorded in `docs/DEV_LOG.md`.

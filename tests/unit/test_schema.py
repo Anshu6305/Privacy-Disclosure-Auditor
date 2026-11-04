@@ -697,6 +697,7 @@ def test_span_offsets_must_be_ordered(session: Session, seed):
         session,
         ExtractedSpan(
             extracted_practice_id=practice.extracted_practice_id,
+            model_version_id=seed["models"][1].model_version_id,
             span_type="data_type",
             span_text="email address",
             char_start=30,
@@ -721,6 +722,7 @@ def test_span_type_is_restricted(session: Session, seed):
         session,
         ExtractedSpan(
             extracted_practice_id=practice.extracted_practice_id,
+            model_version_id=seed["models"][1].model_version_id,
             span_type="retention_period",
             span_text="30 days",
             char_start=0,
@@ -827,6 +829,7 @@ def test_metric_must_declare_how_abstentions_were_handled(session: Session, seed
         session,
         EvaluationMetric(
             evaluation_run_id=run.evaluation_run_id,
+            scope="overall",
             metric_name="macro_f1",
             metric_value=0.71,
             abstention_handling="whichever",
@@ -848,12 +851,14 @@ def test_both_abstention_handlings_coexist_for_one_metric(session: Session, seed
         [
             EvaluationMetric(
                 evaluation_run_id=run.evaluation_run_id,
+                scope="overall",
                 metric_name="macro_f1",
                 metric_value=0.71,
                 abstention_handling="excluded",
             ),
             EvaluationMetric(
                 evaluation_run_id=run.evaluation_run_id,
+                scope="overall",
                 metric_name="macro_f1",
                 metric_value=0.63,
                 abstention_handling="counted_as_error",
@@ -887,3 +892,80 @@ def test_every_table_has_a_primary_key(session: Session):
     for table in Base.metadata.tables:
         pk = inspector.get_pk_constraint(table)
         assert pk["constrained_columns"], f"{table} has no primary key"
+
+
+# ---------------------------------------------------------------------------
+# Columns restored by the baseline audit (class E findings)
+# ---------------------------------------------------------------------------
+
+
+def test_verdict_stores_a_nullable_confidence(session: Session, seed):
+    """E-5. Required by Phase 3 section 10.2, by F-19 step 3 and by NFR-07.
+
+    Nullable, because a category neither source mentions has no judgement and
+    therefore no confidence to report.
+    """
+    column = Base.metadata.tables["verdict"].columns["confidence"]
+    assert column.nullable is True
+
+    session.add_all(
+        [
+            Verdict(
+                audit_id=seed["audit"].audit_id,
+                ds_category="Personal info",
+                verdict_value="Contradictory",
+                declared=True,
+                found_in_policy=True,
+                confidence=0.8431,
+            ),
+            Verdict(
+                audit_id=seed["audit"].audit_id,
+                ds_category="Calendar",
+                verdict_value="Consistent",
+                declared=False,
+                found_in_policy=False,
+                confidence=None,
+            ),
+        ]
+    )
+    session.flush()
+    assert session.query(Verdict).count() == 2
+
+
+def test_verdict_confidence_must_be_a_probability(session: Session, seed):
+    rejects(
+        session,
+        Verdict(
+            audit_id=seed["audit"].audit_id,
+            ds_category="Location",
+            verdict_value="Contradictory",
+            declared=True,
+            found_in_policy=True,
+            confidence=1.5,
+        ),
+    )
+
+
+def test_span_records_the_extractor_that_produced_it(session: Session, seed):
+    """E-4. F-12 uses a different model from F-11, so a span cannot be
+    attributed through its parent practice."""
+    column = Base.metadata.tables["extracted_span"].columns["model_version_id"]
+    assert column.nullable is False
+    assert column.foreign_keys
+
+
+def test_restored_dictionary_columns_exist(session: Session):
+    """E-1, E-3, E-6. Columns named in the approved data dictionary."""
+    assert "store_category" in Base.metadata.tables["application"].columns
+    assert "practice_type" in Base.metadata.tables["extracted_practice"].columns
+    assert "scope" in Base.metadata.tables["evaluation_metric"].columns
+
+
+def test_gold_annotation_index_covers_category(session: Session):
+    """Phase 3 section 10.3 requires (app_id, ds_category)."""
+    index = next(
+        ix
+        for ix in Base.metadata.tables["gold_annotation"].indexes
+        if ix.name == "ix_gold_app"
+    )
+    assert [c.name for c in index.columns] == ["app_id", "ds_category"]

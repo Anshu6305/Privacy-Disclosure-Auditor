@@ -30,6 +30,13 @@ matched. Step 3 sits above step 4 so that case ends as Undetermined, which is
 an admission of uncertainty, rather than Declared-not-in-policy, which is an
 assertion about the policy's contents.
 
+**Verdict confidence.** F-19 processing step 3 requires the verdict to carry
+the confidence of the judgement that determined it, and for an Undetermined
+verdict the highest sub-threshold confidence instead. The helper
+``_deciding_confidence`` below implements that, and each step passes the class
+of judgements that triggered it. Confidence is None only where no judgement
+determined anything; it is never invented to fill the field.
+
 Complexity: O(J) over the judgements in a category, O(C x J) over all
 categories.
 """
@@ -54,6 +61,23 @@ from analysis.vocabulary import (
     VERDICT_IN_POLICY_NOT_DECLARED,
     VERDICT_UNDETERMINED,
 )
+
+
+def _deciding_confidence(
+    judgements: Sequence[AlignmentJudgement],
+) -> float | None:
+    """Highest confidence among the judgements that decided the verdict.
+
+    F-19 step 3 calls this "the judgement that determined the outcome". Where
+    several judgements of the same class are present, the strongest is the one
+    the verdict rests on, which is also the one F-20 quotes first.
+
+    Returns None for an empty sequence, which is the case where nothing
+    determined the verdict and there is no confidence to report.
+    """
+    if not judgements:
+        return None
+    return max(judgement.confidence for judgement in judgements)
 
 
 def assign_category_verdict(
@@ -96,6 +120,7 @@ def assign_category_verdict(
             declared=declared,
             found_in_policy=True,
             abstention_involved=abstention_involved,
+            confidence=_deciding_confidence(contradictions),
             records=select_evidence(contradictions, max_records=max_evidence),
         )
 
@@ -110,6 +135,7 @@ def assign_category_verdict(
                 declared=True,
                 found_in_policy=True,
                 abstention_involved=abstention_involved,
+                confidence=_deciding_confidence(supports),
                 records=(),
             )
 
@@ -119,6 +145,7 @@ def assign_category_verdict(
             declared=False,
             found_in_policy=True,
             abstention_involved=abstention_involved,
+            confidence=_deciding_confidence(supports),
             records=select_evidence(supports, max_records=max_evidence),
         )
 
@@ -130,6 +157,13 @@ def assign_category_verdict(
             declared=declared,
             found_in_policy=False,
             abstention_involved=True,
+            # F-19 step 3: for Undetermined, the highest sub-threshold
+            # confidence. Deliberately taken from the abstained judgements
+            # only. A trusted NO_MATCH in the same category may well be more
+            # confident, but it is not what left the question open, and
+            # reporting it here would overstate how close the system came to
+            # an answer.
+            confidence=_deciding_confidence(abstentions),
             records=record_inconclusive(abstentions, declared=declared),
         )
 
@@ -141,6 +175,12 @@ def assign_category_verdict(
             declared=True,
             found_in_policy=False,
             abstention_involved=False,
+            # The verdict rests on trusted non-matches where there are any.
+            # With no judgements at all there is nothing to report, and the
+            # field stays None rather than being filled with a guess.
+            confidence=_deciding_confidence(
+                [j for j in judgements if j.is_decisive_no_match]
+            ),
             records=record_absence(ds_category, declaration),
         )
 
@@ -153,6 +193,9 @@ def assign_category_verdict(
         declared=False,
         found_in_policy=False,
         abstention_involved=False,
+        # Neither source mentioned the category, so no judgement exists and
+        # there is no confidence to state.
+        confidence=None,
         records=(),
     )
 

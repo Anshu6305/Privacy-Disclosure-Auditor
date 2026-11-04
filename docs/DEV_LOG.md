@@ -337,3 +337,55 @@ test is proposed in Part 5 — proposed, not written, pending approval.
 
 No correction from the audit was implemented. No milestone was started. The
 team asked for findings only.
+
+---
+
+## 2026-11-04 — Audit corrections: class E restorations
+
+Team approved proceeding with the class E restorations. Class D deviations were
+**not** touched and still await a ruling.
+
+### Changed
+
+- `analysis/verdict/models.py` — `CategoryVerdict.confidence`, nullable, range-checked.
+- `analysis/verdict/verdict_engine.py` — `_deciding_confidence` helper; all five
+  ALG-8 steps now set confidence per F-19 step 3.
+- `backend/app/db/models.py` — `verdict.confidence NUMERIC(5,4)` + CHECK;
+  `extracted_span.model_version_id` NOT NULL FK + index;
+  `application.store_category`; `extracted_practice.practice_type`;
+  `evaluation_metric.scope`; `gold_annotation` index extended to
+  `(app_id, ds_category)`; `DESC` restored on two time-ordered indexes.
+- `tests/unit/test_verdict_confidence.py` — new, 15 tests.
+- `tests/unit/test_schema.py` — 5 tests added; 4 fixtures updated for the new
+  NOT NULL columns.
+- `tests/integration/test_postgresql_schema.py` — new, 29 tests.
+
+### Verified
+
+| Check | Command | Result |
+|---|---|---|
+| Full suite | `pytest tests` | **189 passed, 30 skipped** |
+| Verdict confidence | `pytest tests/unit/test_verdict_confidence.py` | 15 passed |
+| Lint | `ruff check .` | All checks passed |
+| Safety guard, project database | `TEST_DATABASE_URL=...privacy_auditor pytest tests/integration/test_postgresql_schema.py` | **Refused**, as designed |
+| Safety guard, `_test` database with no server | same with `..._test` | 29 skipped cleanly |
+
+### Found while doing this
+
+- The new NOT NULL `scope` and `extracted_span.model_version_id` broke four
+  existing fixtures, which is the schema tests doing their job.
+- `create_engine` sat outside the try block in the PostgreSQL fixture, so a
+  missing psycopg driver produced 29 errors instead of 29 skips. Fixed. Anyone
+  who has not installed the full requirements now gets skips.
+
+### Still outstanding
+
+- **Class D findings D-1 to D-10** — unchanged, awaiting the team.
+- **DOC-1 and DOC-2** — contradictions inside the approved Phase 3 report,
+  needing a faculty ruling.
+- **E-2** — deferred until D-1 is decided.
+- **`practice_type` and `scope` have no defined vocabulary.** The columns exist;
+  Phase 3 defines no values for either. Not invented.
+- **PostgreSQL still never contacted.** 29 tests ready; none has run.
+- **Migration strategy undecided** — the read-only check in audit Part 4 has not
+  been run.

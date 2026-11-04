@@ -36,9 +36,11 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
+    desc,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -97,6 +99,10 @@ class Application(Base):
     package_name: Mapped[str] = mapped_column(String(255), nullable=False)
     app_name: Mapped[str] = mapped_column(String(500), nullable=False)
     developer_name: Mapped[str | None] = mapped_column(String(500))
+    #: The Play Store category, such as Tools or Health & Fitness. Nullable
+    #: because the collector cannot always obtain it and a placeholder would be
+    #: invented data.
+    store_category: Mapped[str | None] = mapped_column(String(128))
     play_store_url: Mapped[str | None] = mapped_column(Text)
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -163,7 +169,14 @@ class DisclosureSnapshot(Base):
     __table_args__ = (
         CheckConstraint(_in_set("source_type", SOURCE_TYPES), name="ck_snapshot_source_type"),
         CheckConstraint("length(content_sha256) = 64", name="ck_snapshot_sha256_length"),
-        Index("ix_snapshot_app_source", "app_id", "source_type", "retrieved_at"),
+        # Phase 3 section 10.3 requires a descending time ordering, because
+        # history queries (FR-25) read newest first.
+        Index(
+            "ix_snapshot_app_source",
+            "app_id",
+            "source_type",
+            desc("retrieved_at"),
+        ),
         Index("ix_snapshot_sha256", "content_sha256"),
     )
 
@@ -298,6 +311,15 @@ class ExtractedPractice(Base):
 
     #: One of the ten OPP-115 categories.
     opp115_category: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    #: Specified in the approved data dictionary.
+    #:
+    #: Phase 3 names this column and gives no value set for it anywhere in the
+    #: report, including the F-11 specification. The column is restored here so
+    #: the schema matches the dictionary, and left nullable with no CHECK
+    #: because inventing a vocabulary for it would be fabricating part of the
+    #: approved design. Recorded as audit finding E-3 for the team to define.
+    practice_type: Mapped[str | None] = mapped_column(String(64))
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     abstained: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     threshold_applied: Mapped[float] = mapped_column(Float, nullable=False)
@@ -332,6 +354,13 @@ class ExtractedSpan(Base):
         ForeignKey("extracted_practice.extracted_practice_id", ondelete="CASCADE"),
         nullable=False,
     )
+    #: The span extractor that produced this span. F-12 uses a different model
+    #: from F-11, so a span cannot be attributed through its parent practice,
+    #: which records only the classifier. Required by NFR-08 reproducibility
+    #: and by the baseline-versus-improved comparison of GI-05.
+    model_version_id: Mapped[int] = mapped_column(
+        ForeignKey("model_version.model_version_id"), nullable=False
+    )
     span_type: Mapped[str] = mapped_column(String(32), nullable=False)
     span_text: Mapped[str] = mapped_column(Text, nullable=False)
     char_start: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -348,6 +377,7 @@ class ExtractedSpan(Base):
         CheckConstraint("char_start >= 0", name="ck_span_offset_nonnegative"),
         CheckConstraint("confidence >= 0.0 AND confidence <= 1.0", name="ck_span_confidence_range"),
         Index("ix_span_practice", "extracted_practice_id", "span_type"),
+        Index("ix_span_model", "model_version_id"),
     )
 
 
@@ -500,7 +530,7 @@ class AuditRun(Base):
         ),
         # The queue scan: oldest queued first.
         Index("ix_audit_queue", "status", "requested_at"),
-        Index("ix_audit_app_history", "app_id", "requested_at"),
+        Index("ix_audit_app_history", "app_id", desc("requested_at")),
     )
 
 
@@ -581,6 +611,16 @@ class Verdict(Base):
     ds_category: Mapped[str] = mapped_column(String(128), nullable=False)
     verdict_value: Mapped[str] = mapped_column(String(32), nullable=False)
 
+    #: Confidence of the judgement that determined this verdict (F-19 step 3).
+    #: Nullable, as the approved data dictionary specifies: null where no
+    #: judgement determined anything. NFR-07 requires this to reach the user.
+    #:
+    #: Stored as NUMERIC(5,4), the approved type, which holds exactly four
+    #: decimal places with no representation error. The other confidence
+    #: columns are still FLOAT pending the team's ruling on audit finding
+    #: D-10; that asymmetry is deliberate and recorded, not an oversight.
+    confidence: Mapped[float | None] = mapped_column(Numeric(5, 4))
+
     #: True when the declaration asserted this category at all. Kept because
     #: ALG-8 resolves a decisive SUPPORTS against the declaration state, and the
     #: report has to be able to explain why.
@@ -599,6 +639,10 @@ class Verdict(Base):
     __table_args__ = (
         UniqueConstraint("audit_id", "ds_category", name="uq_verdict_audit_category"),
         CheckConstraint(_in_set("verdict_value", VERDICTS), name="ck_verdict_value"),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0.0 AND confidence <= 1.0)",
+            name="ck_verdict_confidence_range",
+        ),
         Index("ix_verdict_audit", "audit_id"),
     )
 
@@ -704,7 +748,8 @@ class GoldAnnotation(Base):
             "app_id", "ds_category", "annotator_code", name="uq_gold_app_category_annotator"
         ),
         CheckConstraint(_in_set("label", GOLD_LABELS), name="ck_gold_label_is_annotation_label"),
-        Index("ix_gold_app", "app_id"),
+        # Phase 3 section 10.3 requires (app_id, ds_category).
+        Index("ix_gold_app", "app_id", "ds_category"),
     )
 
 
@@ -769,6 +814,16 @@ class EvaluationMetric(Base):
     evaluation_run_id: Mapped[int] = mapped_column(
         ForeignKey("evaluation_run.evaluation_run_id", ondelete="CASCADE"), nullable=False
     )
+    #: Specified in the approved data dictionary, which describes
+    #: "per-category and overall metrics". Phase 3 names the column but states
+    #: no value set, so there is no CHECK here; the two values its prose
+    #: implies are per-category and overall. Left for the team to confirm.
+    #:
+    #: Note: restoring this column alone does not make per-category metrics
+    #: storable. The baseline breaks metrics down by Data Safety category and
+    #: this implementation breaks them down by predicted class label, which is
+    #: audit finding D-9 and still awaits a ruling.
+    scope: Mapped[str] = mapped_column(String(32), nullable=False)
     metric_name: Mapped[str] = mapped_column(String(64), nullable=False)
     #: Null for aggregate metrics such as macro-F1.
     class_label: Mapped[str | None] = mapped_column(String(64))

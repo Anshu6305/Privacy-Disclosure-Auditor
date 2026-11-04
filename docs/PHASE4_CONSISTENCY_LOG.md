@@ -522,3 +522,97 @@ have been corrected:
 Also restated: all three confidence thresholds remain provisional at 0.50 and
 uncalibrated; persistence of verdicts is Milestone 8 and not started; no
 end-to-end audit has ever been run.
+
+---
+
+## Audit corrections — 2026-11-04
+
+### C-29 Class E restorations implemented
+
+**Authorisation:** the team approved proceeding with the class E restorations.
+These restore columns the approved Phase 3 data dictionary specifies, so they
+are compliance with the baseline rather than departures from it and need no
+requirement change-log entry.
+
+**Implemented:**
+
+| Finding | Restoration |
+|---|---|
+| E-5 | `verdict.confidence NUMERIC(5,4)` nullable, with a range CHECK; `CategoryVerdict.confidence`; F-19 step 3 in the engine |
+| E-4 | `extracted_span.model_version_id` NOT NULL FK, plus its index |
+| E-1 | `application.store_category` nullable |
+| E-3 | `extracted_practice.practice_type` nullable |
+| E-6 | `evaluation_metric.scope` NOT NULL |
+| — | `gold_annotation` index extended to `(app_id, ds_category)` |
+| — | `DESC` restored on the two time-ordered indexes |
+
+**Deliberately not restored:** E-2, `disclosure_snapshot.status`. What a status
+describes depends on whether a row is one collection event or one source, which
+is finding D-1 and still open. Restoring it now would bake in an answer to a
+question the team has not decided.
+
+**Two columns restored without their meaning:** Phase 3 names
+`extracted_practice.practice_type` and `evaluation_metric.scope` but defines no
+value set for either, anywhere in the report. The columns exist so the schema
+matches the dictionary; neither has a CHECK, because inventing a vocabulary
+would be fabricating part of the approved design. Both are flagged for the team.
+
+**Status:** schema now matches the approved data dictionary on every class E
+point except E-2. Class D deviations are unchanged.
+
+### C-30 F-19 completed
+
+`assign_category_verdict` now implements processing step 3. Confidence is taken
+from the highest-confidence judgement of the class that triggered the ALG-8
+step that fired, and for Undetermined from the highest **sub-threshold**
+confidence, as the approved design requires.
+
+Two decisions inside that are worth recording because neither is forced by the
+text:
+
+- For Undetermined, the figure is drawn from the abstained judgements only. A
+  trusted NO_MATCH in the same category may be more confident, but it is not
+  what left the question open, and reporting it would overstate how close the
+  system came to an answer.
+- Confidence is `None` where no judgement determined anything — the category
+  neither source mentions, and a declared category that produced no judgements.
+  A default such as 0.0 would read as "very low confidence" rather than "not
+  applicable", so the field stays null as the data dictionary permits.
+
+Fifteen tests in `tests/unit/test_verdict_confidence.py`. These are the tests
+whose absence let the omission through: the previous suite verified what had
+been built rather than what the design required.
+
+**NFR-07 is not yet satisfied end to end.** The value is computed and stored;
+no endpoint returns it and no screen shows it. That closes in M8 and M9, and
+the traceability document records the gap explicitly.
+
+### C-31 PostgreSQL tests written, not executed
+
+`tests/integration/test_postgresql_schema.py` contains 29 tests covering the
+Alembic upgrade, the sixteen tables, JSONB, the eleven BIGINT primary keys,
+`timestamptz`, the restored `NUMERIC` confidence, both functional `lower()`
+indexes, every declared CHECK and UNIQUE constraint in the real catalogue, the
+seven NOT NULL references on `audit_run`, and seven cases where PostgreSQL must
+reject an invalid record.
+
+Safety was verified rather than assumed: a `TEST_DATABASE_URL` naming
+`privacy_auditor` fails with an explicit refusal instead of running, a missing
+driver or unreachable server skips cleanly, and every test runs inside a
+transaction that is rolled back. One defect was found and fixed in the process
+— `create_engine` was outside the try block, so a missing psycopg driver
+produced 29 errors rather than 29 skips.
+
+**They have never run against PostgreSQL.** The project may not describe the
+PostgreSQL schema as verified until it has.
+
+### C-32 Migration strategy still undecided
+
+No new Alembic revision was created. Because `0001_baseline` builds from the
+model metadata, a fresh database still receives the restored columns correctly
+without one — which is the single advantage of that approach and the reason the
+restorations could proceed before the migration question is settled.
+
+The question is not closed. Whether to freeze `0001` (Strategy A) or add
+`0002` (Strategy B) depends on whether the baseline has been applied anywhere,
+which the team has not yet confirmed. The read-only check is in audit Part 4.

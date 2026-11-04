@@ -320,10 +320,26 @@ class CategoryVerdict:
     abstention_involved: bool = False
     records: tuple[EvidenceRecord, ...] = field(default_factory=tuple)
 
+    #: Confidence of the judgement that determined this verdict (F-19 step 3).
+    #:
+    #: None when no judgement determined anything: the category neither source
+    #: mentions, and a declared category for which no judgement was produced at
+    #: all. There is nothing to report in those cases, and a number invented to
+    #: fill the field would be a fabricated measurement.
+    #:
+    #: For an Undetermined verdict this is the highest **sub-threshold**
+    #: confidence, as the approved design requires: the strongest thing the
+    #: system saw without being able to trust it.
+    confidence: float | None = None
+
     def __post_init__(self) -> None:
         if self.verdict not in VERDICTS:
             raise ValueError(
                 f"unknown verdict {self.verdict!r}; expected one of {VERDICTS}"
+            )
+        if self.confidence is not None and not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(
+                f"verdict confidence {self.confidence} is not a probability"
             )
 
     @property
