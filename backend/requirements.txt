@@ -1,0 +1,33 @@
+# Runtime dependencies. Versions pinned so every team member and the grading
+# environment resolve the same tree.
+
+# --- Web layer ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.0
+python-multipart==0.0.20
+
+# --- Database ---
+SQLAlchemy==2.0.36
+psycopg[binary]==3.2.3
+alembic==1.14.0
+
+# --- Text processing ---
+beautifulsoup4==4.12.3
+lxml==5.3.0
+html5lib==1.1
+pypdf==5.1.0
+regex==2024.11.6
+
+# --- Classical ML (baseline, F-11) ---
+scikit-learn==1.6.0
+numpy==2.2.1
+scipy==1.14.1
+joblib==1.4.2
+pandas==2.2.3
+
+# --- Utilities ---
+python-dotenv==1.0.1
+httpx==0.28.1
+tenacity==9.0.0

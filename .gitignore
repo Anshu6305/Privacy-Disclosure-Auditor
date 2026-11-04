@@ -1,0 +1,52 @@
+# ---------------------------------------------------------------
+# Datasets and collected corpora are NEVER committed.
+# OPP-115 is released for research and teaching use and is not ours
+# to redistribute. The Play Store corpus and policy documents are
+# third-party content. Each team member obtains these locally using
+# the instructions in data/README.md.
+# ---------------------------------------------------------------
+data/*
+!data/README.md
+!data/.gitkeep
+
+# Trained model weights and checkpoints (large, regenerable)
+ml/checkpoints/
+ml/runs/
+*.pt
+*.bin
+*.safetensors
+*.joblib
+*.pkl
+
+# Secrets and local configuration
+.env
+.env.local
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+tmp/
+.DS_Store

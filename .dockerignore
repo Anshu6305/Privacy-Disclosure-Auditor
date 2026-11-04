@@ -1,0 +1,21 @@
+.git
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Never send datasets or model weights into the build context.
+data/
+ml/checkpoints/
+ml/runs/
+
+frontend/node_modules
+frontend/dist
+docs/
+tests/
+.env
+*.log
+.DS_Store

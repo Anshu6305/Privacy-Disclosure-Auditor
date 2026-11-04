@@ -1,0 +1,84 @@
+# Three containers on one host, per the approved Phase 3 deployment design.
+# No orchestrator, no message broker, no cache service. The job queue is a
+# table in PostgreSQL.
+
+services:
+  database:
+    image: postgres:16-alpine
+    container_name: auditor_database
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-privacy_auditor}
+      POSTGRES_USER: ${POSTGRES_USER:-auditor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      - database_data:/var/lib/postgresql/data
+    ports:
+      # Exposed on localhost only so the database is never reachable off-host.
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-auditor} -d ${POSTGRES_DB:-privacy_auditor}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # "web/API" from the Phase 3 deployment diagram: this one container serves
+  # both the REST API and the built single-page application.
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: auditor_api
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      POSTGRES_HOST: database
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-privacy_auditor}
+      POSTGRES_USER: ${POSTGRES_USER:-auditor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      POLICY_STORAGE_DIR: /app/data/policies/raw
+      STATIC_DIR: /app/static
+    volumes:
+      # Raw policy documents live on the filesystem, not in the database.
+      - ./data/policies:/app/data/policies
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: auditor_worker
+    command: ["python", "-m", "app.worker.worker"]
+    environment:
+      POSTGRES_HOST: database
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-privacy_auditor}
+      POSTGRES_USER: ${POSTGRES_USER:-auditor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      POLICY_STORAGE_DIR: /app/data/policies/raw
+    volumes:
+      - ./data/policies:/app/data/policies
+      # Model weights are mounted rather than baked into the image, so the
+      # image stays small and weights are never committed.
+      - ./ml/checkpoints:/app/ml/checkpoints:ro
+    depends_on:
+      database:
+        condition: service_healthy
+    # One audit at a time per worker, per design decision DD-2. Raising this
+    # breaks the memory assumption; audits queue instead.
+    deploy:
+      replicas: 1
+    restart: unless-stopped
+
+volumes:
+  database_data:

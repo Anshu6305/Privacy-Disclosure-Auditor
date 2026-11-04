@@ -1,0 +1,18 @@
+# Deep-learning dependencies, installed separately.
+#
+# These are large (torch alone is over 2 GB with its CUDA wheels) and are only
+# needed for the improved models in Milestone 6 and for inference once those
+# models exist. The baseline classifier, the verdict engine, the API, the
+# database and the frontend all run without this file installed.
+#
+# On Apple Silicon, pip installs the CPU/MPS build of torch automatically.
+# For GPU training, install inside Colab or Kaggle instead, where torch is
+# already present.
+
+torch==2.5.1
+transformers==4.47.1
+tokenizers==0.21.0
+datasets==3.2.0
+accelerate==1.2.1
+spacy==3.8.3
+seqeval==1.2.2
