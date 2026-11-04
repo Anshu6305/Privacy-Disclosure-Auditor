@@ -170,15 +170,27 @@ baseline migration refuses to run if the metadata holds a different number.
 
 **Status:** consistent.
 
-### C-10 Seven NOT NULL foreign keys on audit_run
+### C-10 Seven NOT NULL foreign keys on audit_run — **CORRECTED 2026-11-04**
 
-**Approved design:** every audit records both snapshots, the taxonomy mapping
-version and the three model versions, plus the application.
+**What this entry originally claimed:** that the seven NOT NULL foreign keys on
+`audit_run` matched the approved design.
 
-**What happened:** Implemented and verified. `test_audit_run_has_seven_not_null_foreign_keys`
-counts them and asserts none is nullable.
+**Why that was wrong:** the claim was checked against Phase 3 Section 10.3,
+which states "all seven foreign keys from audit_run are NOT NULL", and not
+against Section 10.2, which lists **six**: app_id, snapshot_id,
+mapping_version_id, classifier_version_id, extractor_version_id and
+aligner_version_id. The two sections of the approved report disagree with each
+other, and the prose's own arithmetic — one snapshot plus four versions plus the
+application — also gives six.
 
-**Status:** consistent.
+The implementation has seven only because it splits `disclosure_snapshot` into
+one row per source and therefore carries two snapshot references. That split is
+itself a deviation from Section 10.2 and is recorded as finding D-1 in
+`docs/PHASE4_SCHEMA_BASELINE_AUDIT.md`.
+
+**Accurate status:** the count matches Section 10.3; the structure does not
+match Section 10.2. Resolution depends on decision D-1 and on a faculty ruling
+on the contradiction in the approved report, recorded as DOC-1.
 
 ### C-11 Evidence rules enforced by the database, not by convention
 
@@ -447,3 +459,66 @@ this and records it on the audit run is Milestone 8 work.
 Milestone 7 required no change to the sixteen-table schema, the API design, or
 any FR, NFR, GI or function identifier. Nothing is pending the team's approval
 from this milestone.
+
+---
+
+## Baseline audit — 2026-11-04
+
+### C-26 Schema compared against the approved data dictionary
+
+**What prompted it:** the team asked for a Phase 2 and Phase 3 consistency
+audit before any further implementation, noting that sixteen tables does not by
+itself mean the schema matches Phase 3.
+
+**What was done:** the Phase 3 report's Section 10.2 data dictionary and
+Section 10.3 constraints were read directly from `Report_Phase-03.docx`, and
+every table, column, type, nullability, key, constraint and index was compared
+against the committed `backend/app/db/models.py`. Results in
+`docs/PHASE4_SCHEMA_BASELINE_AUDIT.md`.
+
+**Outcome:** the schema does **not** match the approved data dictionary. Table
+count, table names, the five-verdict CHECK, the four-label CHECK and the
+`UNIQUE(audit_id, ds_category)` rule all match. Below that: 63 columns renamed,
+38 additions, **7 structural deviations** and **6 omissions**, plus two
+internal contradictions in the approved report itself.
+
+**Status:** findings recorded. Nothing changed. Awaiting team decisions.
+
+### C-27 F-19 verdict confidence was not implemented
+
+**Approved design:** Phase 3 Section 4.2, F-19 processing step 3 — "Set the
+verdict confidence from the judgement that determined the outcome; for an
+Undetermined verdict, record the highest sub-threshold confidence instead."
+Output: "One verdict record for the category, carrying value and confidence."
+Section 10.2 gives `verdict.confidence numeric(5,4) (nullable)`. Phase 2 NFR-07
+requires confidence values to be visible to the user.
+
+**What happened:** the field was omitted from the ORM model, from the domain
+object and from the engine. The Milestone 7 report described ALG-8 as
+implemented exactly as specified; that was true of verdict *selection* and
+false of F-19 as a whole. No test asserted that a verdict carries confidence,
+so 169 passing tests did not reveal it. The tests verified what was built
+rather than what was required.
+
+**Effect:** NFR-07 cannot be satisfied as the system stands. Screen S4 and F-24
+have no confidence to display.
+
+**Correction proposed:** audit Part 3, changes C1 to C3, with tests. It
+restores the approved design, so it needs no faculty approval and no
+requirement change-log entry — only the team's go-ahead to implement.
+
+**Status:** confirmed, unimplemented, awaiting approval.
+
+### C-28 Milestone 7 status corrected
+
+Two rows in `docs/IMPLEMENTATION_TRACEABILITY.md` overstated completeness and
+have been corrected:
+
+- **F-19** is Partially implemented, not Implemented and verified.
+- **F-15** has a working, tested mechanism but **no mapping rules**. No OPP-115
+  to Data Safety rule has been authored, and none will be invented. Until the
+  team authors and reviews them, F-15 cannot run on real data.
+
+Also restated: all three confidence thresholds remain provisional at 0.50 and
+uncalibrated; persistence of verdicts is Milestone 8 and not started; no
+end-to-end audit has ever been run.

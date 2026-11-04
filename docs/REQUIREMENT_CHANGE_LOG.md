@@ -36,3 +36,40 @@ recorded now so they are not presented as surprises later.
    Milestone 6. If it cannot be met with the chosen models, the options are a
    smaller model or a revised target, and the latter would require an entry
    here.
+
+---
+
+## Proposed entries — awaiting team decision and faculty approval
+
+Raised by the baseline audit on 2026-11-04. **None is approved and none is
+implemented.** They are listed here so that the deviations already present in
+the code are visible as pending requests rather than as settled design. Full
+analysis in `docs/PHASE4_SCHEMA_BASELINE_AUDIT.md` Part 7.
+
+| ID | Approved baseline | Deviation present in the code | Reason | Approval |
+|---|---|---|---|---|
+| D-1 | Phase 3 §10.2: `disclosure_snapshot` is one row per collection event holding both source URLs | One row per source, discriminated by `source_type`; `audit_run` carries two snapshot FKs | Handles a policy retrieved while the listing fetch fails, which Phase 1 identified as the highest-probability failure | **Pending** |
+| D-2 | `declared_practice` has `declaration_type` + `is_declared` | Two booleans, `is_collected` and `is_shared` | Simpler, but cannot record an explicit "marked as not collected" | **Pending** |
+| D-3 | `model_version.component` ∈ classifier, extractor, aligner | `task` ∈ classification, span_extraction, alignment | Clearer names, but the stored strings differ from the approved ones | **Pending** |
+| D-4 | `model_version.trained_at` NOT NULL | nullable | The zero-shot NLI baseline under decision D-01 is never trained | **Pending** |
+| D-5 | `UNIQUE(component, variant, trained_at)` | `UNIQUE(task, version_label)` | Human-readable version labels; changes what "the same model" means | **Pending** |
+| D-6 | `alignment_judgement.practice_id` NOT NULL | Two nullable sides with a CHECK requiring one | The baseline cannot represent a declared category with no policy practice, which is the project's central finding type | **Pending** |
+| D-7 | `evidence_record.sentence_text` NOT NULL by §10.2's own rule | `quoted_text` nullable with three CHECKs | NOT NULL would force empty or invented text into absence records, which NFR-06 forbids | **Pending** |
+| D-8 | `evaluation_run` carries four version FKs | One `model_version_id` | Regression: an end-to-end pipeline evaluation cannot be recorded | **Pending** |
+| D-9 | `evaluation_metric.ds_category` for per-category metrics | `class_label` for per-class metrics | Different quantity, not a rename. Both are needed | **Pending** |
+| D-10 | Confidence columns `numeric(5,4)` | FLOAT | Affects NFR-08 reproducibility and ALG-9 ordering | **Pending** |
+
+### Defects in the approved documents
+
+These need a faculty ruling and a correction to the report, not a code change.
+
+| ID | Document | Issue |
+|---|---|---|
+| DOC-1 | Phase 3 §10.2 vs §10.3 | §10.3 states `audit_run` has seven NOT NULL foreign keys; §10.2 lists six, and §10.3's own arithmetic gives six |
+| DOC-2 | Phase 3 §10.2 | `evidence_record.sentence_text` is unmarked, so NOT NULL by the section's stated rule, while the same row's note says offsets are null for absence records |
+
+### Not a change request
+
+The missing `verdict.confidence` (audit E-5) is **not** listed above. Adding it
+restores the approved design rather than departing from it, so it needs no
+entry here. It is recorded in the consistency log as C-27.

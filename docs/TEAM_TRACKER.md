@@ -24,18 +24,33 @@ Faculty Guide: _[to be filled in]_
 
 | Milestone | Owner | Status | Notes |
 |---|---|---|---|
-| M1 Repository and environment | all | Complete | 17 tests passing; Docker not yet executed |
-| M2 Database and backend foundation | R5 | Not started | |
-| M3 Acquisition and offline corpus | R2 | Blocked | Needs Play Store collection on a team machine |
-| M4 Text processing | R3 | Not started | |
-| M5 Baseline ML | R3 | Ready | OPP-115 is in place and verified |
-| M6 Improved ML | R1, R3 | Blocked | Alignment training-data decision pending |
-| M7 Verdict and evidence engine | R1 | Complete | F-14 to F-17, F-19 to F-22; 101 tests, 100% coverage of analysis/. F-18 excluded, stays in M6 |
-| M8 Backend integration | R4 | Not started | |
-| M9 Frontend | R6 | Not started | |
-| M10 Integration and deployment | all | Not started | |
+| M1 Repository and environment | all | **Complete** | Verified on two machines; Python 3.12 on the team Mac. Docker not yet installed |
+| M2 Database and schema | R5 | **Implemented, partly verified** | 16 tables, 169 tests on SQLite. **PostgreSQL never contacted.** Baseline audit found 7 structural deviations and 6 omissions against Phase 3 §10.2 |
+| M3 Acquisition and offline corpus | R2 | **Blocked** | Needs Play Store collection on a team machine; scraper library unmaintained |
+| M4 Text processing | R3 | **Not started** | No external dependency; can start once audit corrections are settled |
+| M5 Baseline ML | R3 | **Ready, not started** | OPP-115 in place and verified: 115 policies, 23,194 practices, 77,906 usable spans |
+| M6 Improved ML | R1, R3 | **Blocked** | Option A decided (D-01). Needs 300-500 labelled pairs and the gold set; neither exists |
+| M7 Verdict and evidence engine | R1 | **Core complete at unit-test level** | F-14, F-16, F-17, F-20, F-21, F-22 complete. **F-19 partial** — verdict confidence missing (audit E-5). **F-15 mechanism only** — no mapping rules authored. F-18 excluded, stays in M6 |
+| M8 Backend integration and persistence | R4 | **Not started** | Verdicts are not persisted; the engine writes nothing |
+| M9 Frontend | R6 | **Not started** | |
+| M10 Integration and deployment | all | **Not started** | |
+
+### Established facts, for reference
+
+| Fact | Status |
+|---|---|
+| OPP-115 downloaded and verified | 115 policies, 23,194 annotated practices, 77,906 usable spans; checksum manifest committed |
+| F-18 alignment approach | **Option A**, approved 2026-11-04 with five binding safeguards (D-01) |
+| Development environment | Python 3.12 required; 3.14 breaks the install (C-18) |
+| Data Safety categories | 14, taken from Google's developer documentation on 2026-11-04 |
+| End-to-end audit | **Never run.** No stage upstream of F-14 exists |
+| Thresholds | All three provisional at 0.50, uncalibrated |
 
 ## Open items requiring the team
+
+0. **Review `docs/PHASE4_SCHEMA_BASELINE_AUDIT.md`** and rule on findings D-1
+   to D-10, the class E restorations, and DOC-1 and DOC-2 which are defects in
+   the approved Phase 3 report. This blocks further implementation.
 
 1. Decide the F-18 alignment training-data approach — master plan §7.
 2. Confirm encoder checkpoints for the three learning tasks.

@@ -283,3 +283,57 @@ clauses, and a guard that never runs in a test is not a guarantee.
 F-18, and all of Milestones 3, 4, 5, 6, 8, 9 and 10. Persisting verdicts to the
 database is F-28 and belongs to Milestone 8; the engine returns domain objects
 and writes nothing.
+
+---
+
+## 2026-11-04 — Phase 2 and Phase 3 baseline audit
+
+No code changed. No database was created, reset or dropped. 169 tests still
+pass.
+
+### What was done
+
+The approved Phase 3 report was read directly from `Report_Phase-03.docx` —
+Section 10.2 data dictionary, Section 10.3 constraints and indexes, and the
+Section 4.2 specification of F-19 — and Phase 2 was read for NFR-07. The
+implemented schema was dumped from the SQLAlchemy metadata and compared column
+by column. Result: `docs/PHASE4_SCHEMA_BASELINE_AUDIT.md`.
+
+### Principal findings
+
+- **The schema does not match the approved data dictionary.** 63 renamed
+  columns, 38 additions, 7 structural deviations, 6 omissions. Sixteen tables
+  and the headline constraints match; the detail does not.
+- **`verdict.confidence` is missing.** Required by Phase 3 §10.2, by F-19
+  processing step 3, and by NFR-07. Absent from the ORM model, the domain
+  object and the engine. The Milestone 7 report's claim that ALG-8 was
+  implemented exactly as specified was true of verdict selection and false of
+  F-19 as a whole. No test asserted it, so the suite did not catch it.
+- **`evaluation_run` records one model instead of four versions**, so an
+  end-to-end pipeline evaluation cannot be recorded at all.
+- **`extracted_span` has no `model_version_id`**, so spans cannot be attributed
+  to the extractor that produced them.
+- **Two contradictions inside the approved report**: §10.3 says `audit_run` has
+  seven NOT NULL foreign keys while §10.2 lists six; and
+  `evidence_record.sentence_text` is NOT NULL by §10.2's own rule while the
+  same row says offsets are null for absence records.
+- **Consistency log entry C-10 was wrong** and has been corrected. It checked
+  the FK count against §10.3 and not the structure against §10.2.
+
+### Status corrections made to the documentation
+
+- F-19: Implemented and verified → **Partially implemented**.
+- F-15: Implemented and verified → **Mechanism only; no mapping rules authored**.
+- M2: Implemented and verified → **Implemented, PostgreSQL unverified**.
+
+### PostgreSQL
+
+Still never contacted. The authoring environment is a Linux VM with only the
+project folder mounted and cannot reach services on the Mac. A read-only
+command for the team to run is given in audit Part 4, and a genuine integration
+test is proposed in Part 5 — proposed, not written, pending approval.
+
+### Not done, deliberately
+
+No correction from the audit was implemented. No milestone was started. The
+team asked for findings only.

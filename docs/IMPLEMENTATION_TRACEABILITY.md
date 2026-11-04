@@ -15,7 +15,14 @@ A row is never promoted to "Implemented and verified" because the code looks
 finished. The test must have run. Where a status says verified, the test
 identifier in the same row is the evidence.
 
-Last updated: 2026-11-04 (Milestone 7)
+Last updated: 2026-11-04 (post-M7 baseline audit)
+
+> **Schema status.** `docs/PHASE4_SCHEMA_BASELINE_AUDIT.md` compares the
+> implemented schema against the approved Phase 3 Section 10.2 data dictionary
+> and records 7 structural deviations and 6 omissions. Rows in this document
+> that say a table is implemented refer to the table as built, not to agreement
+> with the approved data dictionary. Nothing from that audit has been
+> implemented; it awaits team approval.
 
 ---
 
@@ -101,11 +108,11 @@ current codebase those come only from controlled test fixtures.
 | F-id | Design unit | Code | Test | Status |
 |---|---|---|---|---|
 | F-14 | Confidence thresholding, ALG-4 | `analysis/confidence/gate.py` | `test_pipeline_stages.py` (6 tests), `test_type_invariants.py::test_gate_rejects_a_threshold_that_is_not_a_probability` | Implemented and verified |
-| F-15 | Taxonomy mapping, ALG-5 | `analysis/mapping/taxonomy_mapper.py` | `test_pipeline_stages.py` (7 tests) | Implemented and verified |
+| F-15 | Taxonomy mapping, ALG-5 | `analysis/mapping/taxonomy_mapper.py` | `test_pipeline_stages.py` (7 tests) | **Mechanism implemented and verified; no mapping rules authored.** Cannot run on real data until the reviewed OPP-115 to Data Safety rules exist |
 | F-16 | Declaration normalisation | `analysis/mapping/declaration_normaliser.py` | `test_pipeline_stages.py` (4 tests) | Implemented and verified |
 | F-17 | Candidate construction, ALG-6 | `analysis/mapping/candidate_builder.py` | `test_pipeline_stages.py` (7 tests) | Implemented and verified |
 | F-18 | Semantic alignment | — | — | **Not implemented** — Milestone 6, decision D-01 |
-| F-19 | Verdict assignment, ALG-8 | `analysis/verdict/verdict_engine.py` | `test_verdict_engine.py` (25 tests) | Implemented and verified |
+| F-19 | Verdict assignment, ALG-8 | `analysis/verdict/verdict_engine.py` | `test_verdict_engine.py` (25 tests) | **Partially implemented** — ALG-8 precedence verified; F-19 processing step 3 (verdict confidence) **not implemented**, see audit E-5 |
 | F-20 | Evidence selection, ALG-9 | `analysis/verdict/evidence_selector.py` | `test_evidence_records.py` (8 tests) | Implemented and verified |
 | F-21 | Absence recording | `analysis/verdict/absence_recorder.py` | `test_evidence_records.py` (4 tests) | Implemented and verified |
 | F-22 | Inconclusive recording | `analysis/verdict/inconclusive_recorder.py` | `test_evidence_records.py` (4 tests) | Implemented and verified |
@@ -189,11 +196,11 @@ Milestone 1 except F-26 above.
 | F-12 | `analysis/models/span_extractor.py` | M6 | Not implemented |
 | F-13 | `analysis/models/variant.py` | M6 | Not implemented |
 | F-14 | `analysis/confidence/gate.py` | M7 | Implemented and verified |
-| F-15 | `analysis/mapping/taxonomy_mapper.py` | M7 | Implemented and verified |
+| F-15 | `analysis/mapping/taxonomy_mapper.py` | M7 | Mechanism only — no rules authored |
 | F-16 | `analysis/mapping/declaration_normaliser.py` | M7 | Implemented and verified |
 | F-17 | `analysis/mapping/candidate_builder.py` | M7 | Implemented and verified |
 | F-18 | `analysis/models/semantic_aligner.py` | M6 | Blocked — no training data; decision pending (plan §7) |
-| F-19 | `analysis/verdict/verdict_engine.py` | M7 | Implemented and verified |
+| F-19 | `analysis/verdict/verdict_engine.py` | M7 | Partially implemented — verdict confidence missing |
 | F-20 | `analysis/verdict/evidence_selector.py` | M7 | Implemented and verified |
 | F-21 | `analysis/verdict/absence_recorder.py` | M7 | Implemented and verified |
 | F-22 | `analysis/verdict/inconclusive_recorder.py` | M7 | Implemented and verified |
