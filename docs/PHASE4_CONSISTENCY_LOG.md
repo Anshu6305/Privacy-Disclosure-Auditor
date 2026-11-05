@@ -995,3 +995,68 @@ calibrated probabilities. No calibration has been performed or tested, and
 docstring, the report and the metadata all say so. The 0.50 decision threshold
 used for reporting is provisional and has not been tuned; the validation split
 exists for that and remains unused.
+
+### C-53 ALG-11 index opclass — declared correctly, usability unverified
+
+**Approved design:** F-01 performs case-insensitive prefix search over the two
+functional indexes `ix_application_lower_name` on `lower(app_name)` and
+`ix_application_lower_package` on `lower(package_name)`, with pg_trgm and GIN
+as the documented upgrade path if substring search is later required (C-15).
+
+**What happened:** F-01 is implemented as
+`lower(col) LIKE 'term%'`, which returns the correct rows. Whether PostgreSQL's
+planner can *use* those indexes for that predicate is a separate question and
+has **not been verified**.
+
+A B-tree index on an expression serves a prefix `LIKE` only when its opclass
+orders text byte-wise — `text_pattern_ops` — or when the database collation is
+`C`. Both indexes use the default opclass. Under a collation-aware default
+such as `en_US.UTF-8` the planner may therefore fall back to a sequential scan
+regardless of row count, which would make the indexes correct but inert for
+this query.
+
+**Not resolved here, deliberately.** Confirming it needs an `EXPLAIN` against
+the real database, and fixing it would change the frozen schema, which this
+milestone is forbidden to touch. `scripts/explain_application_search.py`
+performs the measurement read-only and reports the answer, including the
+collation and whether a range predicate on `lower(col)` is index-usable where
+the `LIKE` is not.
+
+**Consequence if it is inert:** correctness is unaffected; only the cost of a
+search changes, and on a corpus of 300 to 500 applications a sequential scan is
+not noticeable. It matters for NFR performance claims, not for results.
+
+**Status:** open. Needs one command run on the team Mac, then a ruling on
+whether to add `text_pattern_ops` to the two indexes.
+
+### C-54 F-01 result limit and minimum query length are provisional
+
+**Approved design:** Phase 3 requires F-01 to apply a configured result limit.
+It names the limit but sets no number, and says nothing about a minimum query
+length.
+
+**What happened:** `application_search_limit = 20` and
+`application_search_min_query_length = 2` are in `Settings`, labelled
+PROVISIONAL in the same words as the F-10 thresholds (C-33), with the reasoning
+recorded beside them. They are the project's own proposal, not an approved
+requirement.
+
+**Status:** consistent — the requirement for a *configured* limit is met, and
+the values are not presented as approved.
+
+### C-55 Search is prefix-only, and substring queries find nothing
+
+**Approved design:** prefix search, chosen so the functional B-tree indexes can
+serve it.
+
+**What happened:** `search("app")` returns no results even though four fixture
+applications contain "app" inside their names. This is the design working as
+approved, not a defect, but it is a behaviour a user will notice: typing the
+middle of an application's name finds nothing.
+
+A test asserts it explicitly so the limitation is recorded rather than
+discovered. pg_trgm with a GIN index remains the documented upgrade path and is
+not implemented.
+
+**Status:** consistent. Flagged for the team in case FR-01 was intended to mean
+substring search, which would be a requirement change, not a code fix.

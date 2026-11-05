@@ -47,9 +47,9 @@ This does not block Phase 4. It splits the work: all source code, schema, tests 
 
 | F-id | Responsibility | Planned module |
 |---|---|---|
-| F-01 | Application search | `backend/app/db/repositories/application_repo.py` |
+| F-01 | Application search | `backend/app/db/repositories/application_repo.py` — **implemented, M3B part 1** |
 | F-02 | Audit request | `backend/app/services/audit_service.py` |
-| F-03 | Unknown-application handling | `backend/app/db/repositories/application_repo.py` |
+| F-03 | Unknown-application handling | `backend/app/db/repositories/application_repo.py` — **implemented, M3B part 1** |
 | F-04 | Declaration loading | `backend/app/db/repositories/snapshot_repo.py` |
 | F-05 | Policy document loading | `backend/app/db/repositories/snapshot_repo.py` |
 | F-06 | Optional live retrieval | `acquisition/play_store_adapter.py` |
@@ -133,7 +133,7 @@ Milestones follow the approved Phase 3 WBS. Dependencies are real, not arbitrary
 | M1 Repository and environment | — | No |
 | M2 Database and backend foundation | M1 | No |
 | M3A Acquisition layer and corpus format | M2 | No — offline-first by design |
-| M3B Acquisition persistence | M3A, **D-1 decision** | Yes — needs the snapshot design |
+| M3B Acquisition persistence | M3A, **D-1 decision** | **Part 1 complete** — F-01, F-03 and the application repository need no snapshot design. F-02 and F-04 to F-07 still need D-1 |
 | M4 Text processing (F-08 to F-10) | M2 | No — complete, on fixtures only |
 | M5 Baseline ML (F-11 baseline) | M4 | Complete — OPP-115 present |
 | M6 Improved ML (F-11, F-12, F-18) | M5 | Yes — models, OPP-115, PolicyIE, alignment labels |

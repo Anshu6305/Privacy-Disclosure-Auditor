@@ -27,7 +27,7 @@ Faculty Guide: _[to be filled in]_
 | M1 Repository and environment | all | **Complete** | Verified on two machines; Python 3.12 on the team Mac. Docker 29.9.2 installed 2026-11-05; `postgres:16-alpine` healthy |
 | M2 Database and schema | R5 | **Implemented and verified** | 16 tables. **29 tests on PostgreSQL 16, all passing**, against a frozen `0001_baseline` (equivalence-tested, commits `2c5fee7`, `1c83153`). Class E omissions restored. D-2, D-6, D-7 withdrawn on re-examination; **D-1 and D-3 to D-5, D-8 to D-10 still await a ruling.** `privacy_auditor` is still empty and never migrated |
 | M3A Acquisition layer and corpus format | R2 | **Complete** | 70 tests. Offline-first; **never run live**, no application collected |
-| M3B Acquisition persistence | R2, R5 | **Planned, not implemented** | `docs/M3B_IMPLEMENTATION_PLAN.md` written 2026-11-05. Options A and B for D-1 are costed; **4 of 7 functions (F-02, F-04 to F-07) cannot be built until D-1 is ruled.** F-01 and F-03 do not depend on it |
+| M3B Acquisition persistence | R2, R5 | **Part 1 complete; part 2 blocked** | F-01, F-03 and `ApplicationRepository` implemented (57 tests, 43 executed). **F-02 and F-04 to F-07 still blocked on D-1.** Plan: `docs/M3B_IMPLEMENTATION_PLAN.md` |
 | M4 Text processing | R3 | **Complete** | F-08, F-09, F-10; 78 tests. Offsets index the cleaned text and are slice-verified |
 | M5 Baseline ML | R3 | **Complete** | F-11 baseline, ALG-2. Held-out test macro-F1 0.7489, micro-F1 0.7690. Two categories unevaluable |
 | M6 Improved ML | R1, R3 | **Blocked** | Option A decided (D-01). Needs 300-500 labelled pairs and the gold set; neither exists |
@@ -58,14 +58,16 @@ working. Recorded plainly so the viva answer is the same as the tracker:
 | Live retrievals performed | **0** |
 | Database rows in `privacy_auditor` | **0.** The database has never been migrated |
 | End-to-end audit run | **Never.** No stage upstream of F-14 is wired to one downstream of it |
-| Functions with no database path yet | F-01 to F-07 (M3B), F-28 to F-34 (M8) |
+| Functions with no database path yet | F-02, F-04 to F-07 (M3B part 2), F-28 to F-34 (M8). F-01 and F-03 now have one |
 | Learning tasks trained | 1 of 3. F-11 baseline only; F-12 and F-18 have no training data |
 | Gold set | Does not exist |
 | Taxonomy mapping rules (F-15) | **None authored.** The lookup mechanism works; it has nothing to look up |
 | Thresholds | All provisional at 0.50, uncalibrated |
 
-Tests: **402 passed, 29 skipped** on SQLite; 29 passed on PostgreSQL 16. The
-29 skips are the PostgreSQL-only tests, skipped when no server is reachable.
+Tests: **445 passed, 43 skipped** on SQLite. The 43 skips are the
+PostgreSQL-only tests, skipped when no server is reachable; 29 of them were
+run and passed against PostgreSQL 16 on 2026-11-05, and the 14 added for F-01
+**have not been run against PostgreSQL yet.**
 
 ## Open items requiring the team
 

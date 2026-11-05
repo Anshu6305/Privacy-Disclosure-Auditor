@@ -184,9 +184,9 @@ Milestone 1 except F-26 above.
 
 | F-id | Planned module | Milestone | Status |
 |---|---|---|---|
-| F-01 | `backend/app/db/repositories/application_repo.py` | M3B | Not implemented — database-backed, pending D-1 |
+| F-01 | `backend/app/db/repositories/application_repo.py` | M3B | **Implemented** — ALG-11 prefix search, 43 unit tests. **PostgreSQL verification not executed** (14 integration tests written, skipped); index usability open as C-53 |
 | F-02 | `backend/app/services/audit_service.py` | M8 | Not implemented |
-| F-03 | `backend/app/db/repositories/application_repo.py` | M3B | Not implemented — database-backed, pending D-1 |
+| F-03 | `backend/app/db/repositories/application_repo.py` | M3B | **Implemented** — reports absence, never raises, never permits an audit request |
 | F-04 | `acquisition/declaration.py` (normalisation, M3A); `backend/app/db/repositories/snapshot_repo.py` (loading, M3B) | M3A/M3B | **Partially implemented** — normalisation done and tested; database loading deferred pending D-1 |
 | F-05 | `acquisition/policy_document.py` (M3A); snapshot path resolution (M3B) | M3A/M3B | **Partially implemented** — filesystem load and hash verification done and tested |
 | F-06 | `acquisition/gateway.py`, `acquisition/adapters.py` | M3A | **Partially implemented** — gateway, rate limiting, caching, error handling done and tested. **Never run against a live source** |
@@ -222,8 +222,14 @@ Milestone 1 except F-26 above.
 ## Requirements FR-01 to FR-27, NFR-01 to NFR-19, GI-01 to GI-07
 
 Rows are added as each requirement's implementation begins, so that a row's
-presence means work has started on it. No requirement is recorded as
-implemented at the end of Milestone 1.
+presence means work has started on it.
+
+| Requirement | Function | Code | Test | Status |
+|---|---|---|---|---|
+| **FR-01** application search | F-01 | `backend/app/db/repositories/application_repo.py` | `tests/unit/test_application_repository.py` (43), `tests/integration/test_application_search_postgresql.py` (14, **not executed**) | **Implemented on SQLite; PostgreSQL unverified** |
+| **FR-03** unknown-application handling | F-03 | same module | same unit file | **Implemented** |
+| FR-02 audit request | F-02 | — | — | Not implemented — needs the D-1 snapshot design |
+| FR-04 to FR-07 | F-04 to F-07 | `acquisition/` | M3A tests | Partially implemented — persistence pending D-1 |
 
 ---
 

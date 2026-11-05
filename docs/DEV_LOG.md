@@ -1016,3 +1016,146 @@ experiment; it was not retrained and the test set was not touched.
 
 M3B implementation on D-1. M6 on labelled alignment pairs and the gold set.
 M8, M9, M10 not started.
+
+---
+
+## 2026-11-05 — Milestone 3B part 1: application repository, F-01, F-03
+
+Authorised as the D-1-independent slice of M3B. F-02 and F-04 to F-07 remain
+untouched and unimplemented.
+
+### Files
+
+| File | Change |
+|---|---|
+| `backend/app/db/repositories/application_repo.py` | New. `ApplicationRepository`, F-01, F-03 |
+| `backend/app/db/repositories/__init__.py` | New exports; was empty |
+| `backend/app/config.py` | Two settings added, both marked PROVISIONAL |
+| `tests/unit/test_application_repository.py` | New, 43 tests |
+| `tests/integration/test_application_search_postgresql.py` | New, 14 tests |
+| `scripts/explain_application_search.py` | New, read-only diagnostic |
+
+No model, migration or database change. `app/db/models.py`,
+`backend/migrations/` and the `analysis/`, `ml/` and `acquisition/` packages
+are byte-identical to commit `e469189`.
+
+### Design
+
+**Search returns dataclasses, not ORM rows.** `ApplicationSummary` carries
+exactly the three fields FR-01 names — app name, developer name, package name
+— and **deliberately omits `app_id`**. The surrogate key is an internal
+detail; package name is the identifier everything else in the system uses.
+`ApplicationDetail` carries `app_id` because F-02 will need the foreign key,
+and nothing in F-01's response shape includes it.
+
+**`get_by_package` is case-sensitive, and the search is not.** Android package
+names are case-sensitive identifiers under a UNIQUE constraint; folding case
+on exact lookup would let two distinct identifiers resolve to one row. The
+prefix search folds case on both sides, which is what ALG-11 specifies.
+
+**LIKE metacharacters are escaped.** Without it, a query of `%` matches the
+entire corpus and `_` becomes a single-character wildcard. Three tests cover
+it, including the fixture application literally named "100% Battery".
+
+**Ordering is explicit.** `ORDER BY lower(app_name), package_name`. Without
+it the same query can return the same rows in a different order on a different
+plan, which makes both a paged interface and a test unreliable.
+
+### Two numbers that are not approved requirements
+
+Phase 3 requires F-01 to apply a *configured* result limit and sets no number;
+it says nothing about a minimum query length. Both are now in `Settings`,
+labelled PROVISIONAL in the same words as the F-10 thresholds:
+
+- `application_search_limit = 20`
+- `application_search_min_query_length = 2`
+
+A query below the minimum returns an empty list, not an exception: FR-01
+describes an as-you-type box, and one keystroke is not a query. Recorded as
+C-54.
+
+### F-03: the distinction the implementation exists to protect
+
+An adapter being configured means a fetch **can be attempted**. It does not
+mean one would succeed, and `AcquisitionGateway` returns recorded failures
+rather than raising. So the two messages differ and the configured one says,
+in those words, that attempting is "not the same as obtaining the data".
+A test asserts the strings "has been retrieved", "was collected" and "now
+available" appear nowhere in it.
+
+`can_request_audit` is **False in both branches**. An audit needs two
+disclosure snapshots; an application absent from the corpus has none. That is
+what "avoid creating an invalid audit request" means here, and it is asserted
+for both values of `live_retrieval_configured`.
+
+`live_retrieval_configured` is passed in by the caller rather than read from
+the gateway, so the backend keeps no dependency on the acquisition package.
+
+### Found and recorded, not fixed — C-53
+
+**The two ALG-11 functional indexes may be inert for this query.** A B-tree
+index on an expression serves a prefix `LIKE` only when its opclass orders
+text byte-wise (`text_pattern_ops`) or the database collation is `C`. Both
+indexes use the default opclass, so under a collation-aware default the
+planner may sequential-scan regardless of row count.
+
+This is **not verified**, and I could not verify it: PostgreSQL runs in Docker
+Desktop on the Mac and is not reachable from where these commands ran.
+`scripts/explain_application_search.py` measures it read-only — it reports the
+collation, the index definitions, and whether each predicate can use an index
+with `enable_seqscan` off, because on a four-row table a sequential scan is
+the correct plan whatever indexes exist.
+
+Correctness is unaffected either way; only search cost changes, and on 300 to
+500 applications a sequential scan is not noticeable. Fixing it would alter
+the frozen schema, which this milestone may not touch, so it is an open
+finding awaiting a ruling.
+
+### Also flagged — C-55
+
+`search("app")` returns **nothing**, though four fixtures contain "app" inside
+their names. Prefix search working as approved, but a user typing the middle
+of a name will find nothing. A test asserts it so the limitation is recorded
+rather than discovered. If FR-01 was meant to mean substring search, that is a
+requirement change, not a code fix; pg_trgm with GIN stays the documented
+upgrade path.
+
+### Verified
+
+| Check | Command | Result |
+|---|---|---|
+| New unit tests | `pytest tests/unit/test_application_repository.py -q` | **43 passed** |
+| Full suite | `pytest tests -p no:warnings` | **445 passed, 43 skipped** |
+| Lint | `ruff check .` | All checks passed |
+| F-01 and F-03 demonstration | ad-hoc script over 6 invented fixtures | Output in the completion report |
+
+Before this milestone: 402 passed, 29 skipped. The arithmetic is 402 + 43 =
+445 and 29 + 14 = 43.
+
+### Not verified — stated as not verified
+
+**The 14 PostgreSQL integration tests did not run.** They skipped, because no
+PostgreSQL was reachable: Docker Desktop runs on the Mac and these commands
+ran where it is not. Skips are not passes. To run them:
+
+```
+cd backend && TEST_DATABASE_URL=postgresql+psycopg://auditor:PASSWORD@localhost:5432/privacy_auditor_frozen_20261105_test \
+  ../.venv/bin/python -m pytest ../tests/integration -q
+```
+
+and for C-53:
+
+```
+TEST_DATABASE_URL=... .venv/bin/python scripts/explain_application_search.py
+```
+
+### Untouched, confirmed
+
+D-1 unresolved and unresolved-by-implication: nothing here reads or writes
+`disclosure_snapshot`. `privacy_auditor` still has **zero tables and no
+`alembic_version`** — it was not migrated, as instructed. The frozen
+`0001_baseline_schema.py` is unchanged. M4, M5, the baseline artefact, its
+split, its seed and its held-out results are untouched.
+
+Also untouched: `declares_no_data_collected` and `SecurityPractices` remain
+unrepresentable, and no column was added for them.

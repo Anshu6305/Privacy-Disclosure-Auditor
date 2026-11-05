@@ -59,6 +59,19 @@ class Settings(BaseSettings):
     min_policy_segments: int = 1
     min_policy_tokens: int = 50
 
+    # --- Application search (F-01, ALG-11) ---
+    #
+    # PROVISIONAL. Phase 2 and Phase 3 require a configured result limit and a
+    # minimum query length for F-01 but set no numbers, so these two values are
+    # the project's own proposal and are not an approved requirement.
+    #
+    # 20 is a list a person can read without paging. 2 is the shortest prefix
+    # that is worth a query: on a corpus of a few hundred applications a
+    # single character matches a large fraction of it, so the search box
+    # returns nothing until the second keystroke.
+    application_search_limit: int = 20
+    application_search_min_query_length: int = 2
+
     # --- Analysis thresholds (ALG-4) ---
     # Placeholders until tuned on the gold set in Milestone 6. They are
     # configuration, not measured results, and are recorded per audit run in
