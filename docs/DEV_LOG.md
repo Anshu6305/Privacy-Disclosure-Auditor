@@ -1394,3 +1394,66 @@ still choose a sequential scan with `enable_seqscan` on, and that is correct.
 C-55 unchanged — prefix-only search, so a substring query finds nothing.
 The generic-plan caveat stands and must be re-checked once F-01 sits behind an
 endpoint. D-1 untouched; `privacy_auditor` still at no revision.
+
+---
+
+## 2026-11-05 — Standing development and testing protocol adopted
+
+Not an implementation. The team issued a permanent protocol covering every
+remaining milestone, bug fix, database change, API change and integration
+step. Recorded as `docs/PHASE4_DEVELOPMENT_PROTOCOL.md` so it governs future
+sessions rather than living in one conversation, and summarised in a new
+`CLAUDE.md` at the repository root so it is picked up before any code is
+written.
+
+### The part that changes how work is reported
+
+Three statuses, used strictly: **Implemented** · **Tested and verified** ·
+**Pending or blocked**. Implementation is not verification.
+
+Under that rule, two entries in the tracker were overstated and are corrected:
+
+- **M7** was "core complete at unit-test level". It is **Implemented**, not
+  verified: every test uses controlled fixtures and it has never run on a real
+  application.
+- **M4** and **M3A** are verified only on the paths that were actually
+  exercised — fixtures, and offline retrieval. Both now say so in the row
+  rather than in a footnote.
+
+**C-53 is Implemented, not verified.** Its PostgreSQL catalogue and `EXPLAIN`
+checks have not been executed. A new "corrections in flight" table in the
+tracker records that under *not executed because of environment limitations* —
+the protocol's fifth reporting category, which is neither skipped nor passed.
+
+### The environment limitation, written down rather than rediscovered
+
+The protocol requires PostgreSQL and disposable-database verification for every
+database change. **PostgreSQL is not reachable from a development session** — it
+runs in Docker Desktop on the team Mac, on that machine's own loopback. That is
+permanent, not a fault.
+
+So §2.2 of the protocol document splits the work by who can run it: unit and
+SQLite tests, Ruff, Alembic offline DDL and SQLite upgrade/downgrade in the
+session; PostgreSQL integration, disposable-database upgrade/downgrade and
+catalogue checks by the team, with the output reported back. A database change
+therefore reaches **Implemented** in a session and **Tested and verified** only
+afterwards.
+
+Alembic offline mode is the one thing that genuinely narrows the gap: it emits
+the real PostgreSQL DDL with no server, which is how the C-53 operator class
+was confirmed rather than assumed.
+
+### Where the safeguards already have teeth
+
+§2.4 lists them, so a future session does not have to rediscover which tests
+are load-bearing: the frozen-baseline tests, the model-to-migration
+equivalence tests, the `_test` suffix guards, `AlignmentJudgement.abstained`
+being a **property** rather than a field so abstention cannot be dropped by a
+caller, the git-ignored M5 artefacts, the `"reliable": false` flag on rare-class
+metrics, and the R1 to R6 placeholders that keep contributions unattributed.
+
+### Verified
+
+Documentation only. `pytest tests -p no:warnings` → **461 passed, 53 skipped**,
+unchanged. `ruff check .` → all checks passed. No code, model, migration or
+database touched.

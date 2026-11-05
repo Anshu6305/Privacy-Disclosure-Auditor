@@ -6,6 +6,11 @@ Status: plan for team approval. No application code written yet.
 
 ---
 
+**Working rules:** `docs/PHASE4_DEVELOPMENT_PROTOCOL.md` is standing and
+mandatory for every remaining implementation step, from 2026-11-05. It governs
+testing, the three completion statuses, and the approval gate at the end of
+every milestone.
+
 ## 1. Baseline audit — what the three approved reports fix
 
 Nothing below is a new decision. It is the set of constraints Phase 4 must implement.
