@@ -28,13 +28,14 @@ from alembic.operations import Operations
 from app.db.models import Base
 from sqlalchemy import create_engine, inspect
 
-REVISION_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "backend"
-    / "migrations"
-    / "versions"
-    / "0001_baseline_schema.py"
+VERSIONS = (
+    Path(__file__).resolve().parents[2] / "backend" / "migrations" / "versions"
 )
+REVISION_PATH = VERSIONS / "0001_baseline_schema.py"
+
+#: C-53's additive revision. Separate from the baseline on purpose: the
+#: baseline is a frozen historical record and must not grow.
+PATTERN_REVISION_PATH = VERSIONS / "0002_pattern_ops_search_indexes.py"
 
 
 @pytest.fixture(scope="module")
@@ -148,7 +149,28 @@ def test_every_column_matches_the_models(migrated_engine):
     )
 
 
+#: Expression-based indexes, which SQLite does not reflect. Checked against the
+#: migration source here, and against the real catalogue in the integration
+#: suite. Each maps to the revision file that must declare it.
+BASELINE_FUNCTIONAL_INDEXES = {
+    "ix_application_lower_name",
+    "ix_application_lower_package",
+}
+PATTERN_FUNCTIONAL_INDEXES = {
+    "ix_application_lower_name_pattern",
+    "ix_application_lower_package_pattern",
+}
+
+
 def test_every_index_matches_the_models(migrated_engine):
+    """The models and the migrations declare the same indexes.
+
+    ``migrated_engine`` applies the **baseline only**, so the four
+    expression-based indexes are excluded from the comparison and checked
+    against the revision sources below. Excluding them is not a weakening:
+    SQLite cannot reflect an expression index at all, so including them would
+    assert nothing on either side.
+    """
     inspector = inspect(migrated_engine)
 
     migrated: set[str] = set()
@@ -159,16 +181,57 @@ def test_every_index_matches_the_models(migrated_engine):
         ix.name for table in Base.metadata.tables.values() for ix in table.indexes
     }
 
-    # SQLite does not reflect expression-based indexes, so the two functional
-    # lower() indexes are checked in the migration source instead. They are
-    # verified for real against PostgreSQL in the integration suite.
-    functional = {"ix_application_lower_name", "ix_application_lower_package"}
-    source = REVISION_PATH.read_text(encoding="utf-8")
-    for index_name in functional:
-        assert index_name in source
-        assert "lower(" in source
-
+    functional = BASELINE_FUNCTIONAL_INDEXES | PATTERN_FUNCTIONAL_INDEXES
+    assert functional <= expected, (
+        "the models no longer declare every functional index: missing "
+        f"{sorted(functional - expected)}"
+    )
     assert (expected - functional) == migrated
+
+
+def test_baseline_declares_its_two_functional_indexes():
+    source = REVISION_PATH.read_text(encoding="utf-8")
+    for index_name in BASELINE_FUNCTIONAL_INDEXES:
+        assert index_name in source
+    assert source.count("lower(") >= 2
+
+
+def test_baseline_does_not_contain_the_c53_correction():
+    """The fix belongs in 0002. If this fails, the frozen record has grown."""
+    source = REVISION_PATH.read_text(encoding="utf-8")
+    assert "text_pattern_ops" not in source
+    for index_name in PATTERN_FUNCTIONAL_INDEXES:
+        assert index_name not in source
+
+
+def test_pattern_revision_is_additive_and_declares_the_opclass():
+    """C-53's revision adds two indexes and touches nothing else."""
+    source = PATTERN_REVISION_PATH.read_text(encoding="utf-8")
+
+    assert 'down_revision: str | None = "0001_baseline"' in source
+    for index_name in PATTERN_FUNCTIONAL_INDEXES:
+        assert index_name in source
+
+    # Additive: indexes only. No table, column or constraint is involved, and
+    # nothing is dropped except the two indexes the downgrade removes.
+    for forbidden in (
+        "create_table",
+        "drop_table",
+        "add_column",
+        "drop_column",
+        "alter_column",
+        "create_check_constraint",
+        "drop_constraint",
+    ):
+        assert forbidden not in source, f"{forbidden} has no place in 0002"
+    assert source.count("op.create_index(") == 1  # one call, in a loop of two
+    assert source.count("op.drop_index(") == 1
+
+    # The operator class, and the label it must be keyed on. Keying
+    # postgresql_ops on the column name compiles silently without the
+    # operator class, so the key itself is part of what is asserted.
+    assert 'postgresql_ops={label: "text_pattern_ops"}' in source
+    assert ".label(label)" in source
 
 
 def test_unique_constraints_match_the_models(migrated_engine):

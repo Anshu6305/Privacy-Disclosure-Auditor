@@ -211,16 +211,39 @@ def test_verdict_confidence_is_numeric(pg_engine):
     "index_name", ["ix_application_lower_name", "ix_application_lower_package"]
 )
 def test_functional_lower_indexes_exist(pg_engine, index_name):
+    """The baseline pair exists and indexes lower().
+
+    **Three separate properties, and this test covers the first two.** The
+    original failure message conflated them and asserted something C-53 has
+    since disproved, so it is corrected here rather than left to mislead:
+
+    1. *Existence* — the index is in the catalogue. Asserted below.
+    2. *Expression correctness* — it indexes ``lower(col)``, not ``col``, so a
+       case-insensitive comparison can match it. Asserted below.
+    3. *Operator-class correctness* — whether a prefix ``LIKE`` can actually
+       use it. **These two indexes use the default ``text_ops`` class and
+       cannot** (C-53, confirmed against PostgreSQL 16 on 2026-11-05). They are
+       retained because only the default class serves
+       ``ORDER BY lower(app_name)``, which F-01 also issues. The pattern-class
+       indexes that do serve the predicate are checked in
+       ``test_application_search_postgresql.py::test_pattern_ops_opclass_in_catalogue``.
+
+    So passing this test means the index exists and is functional. It does
+    **not** mean ALG-11's prefix search uses it.
+    """
     with pg_engine.connect() as connection:
         definition = connection.execute(
             text("SELECT indexdef FROM pg_indexes WHERE indexname = :n"),
             {"n": index_name},
         ).scalar()
 
-    assert definition is not None, f"{index_name} is missing"
+    assert definition is not None, (
+        f"{index_name} is missing from the catalogue: the index does not "
+        "exist at all"
+    )
     assert "lower" in definition.lower(), (
-        f"{index_name} exists but is not a functional index on lower(); "
-        "ALG-11's case-insensitive prefix search would not use it"
+        f"{index_name} exists but does not index lower(): a case-insensitive "
+        f"comparison cannot match it. Definition: {definition}"
     )
 
 

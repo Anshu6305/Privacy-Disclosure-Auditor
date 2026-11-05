@@ -27,7 +27,7 @@ Faculty Guide: _[to be filled in]_
 | M1 Repository and environment | all | **Complete** | Verified on two machines; Python 3.12 on the team Mac. Docker 29.9.2 installed 2026-11-05; `postgres:16-alpine` healthy |
 | M2 Database and schema | R5 | **Implemented and verified** | 16 tables. **29 tests on PostgreSQL 16, all passing**, against a frozen `0001_baseline` (equivalence-tested, commits `2c5fee7`, `1c83153`). Class E omissions restored. D-2, D-6, D-7 withdrawn on re-examination; **D-1 and D-3 to D-5, D-8 to D-10 still await a ruling.** `privacy_auditor` is still empty and never migrated |
 | M3A Acquisition layer and corpus format | R2 | **Complete** | 70 tests. Offline-first; **never run live**, no application collected |
-| M3B Acquisition persistence | R2, R5 | **Part 1 complete and PostgreSQL-verified; part 2 blocked** | F-01, F-03 and `ApplicationRepository`, commit `fc1a111`. 43 unit + 43 PostgreSQL integration tests passed. **F-02 and F-04 to F-07 blocked on D-1.** C-53 resolution proposed, awaiting approval |
+| M3B Acquisition persistence | R2, R5 | **Part 1 complete and PostgreSQL-verified; part 2 blocked** | F-01, F-03 and `ApplicationRepository`, commit `fc1a111`. 43 unit + 43 PostgreSQL integration tests passed. **F-02 and F-04 to F-07 blocked on D-1.** C-53 corrected by `0002_pattern_ops`; its PostgreSQL verification outstanding |
 | M4 Text processing | R3 | **Complete** | F-08, F-09, F-10; 78 tests. Offsets index the cleaned text and are slice-verified |
 | M5 Baseline ML | R3 | **Complete** | F-11 baseline, ALG-2. Held-out test macro-F1 0.7489, micro-F1 0.7690. Two categories unevaluable |
 | M6 Improved ML | R1, R3 | **Blocked** | Option A decided (D-01). Needs 300-500 labelled pairs and the gold set; neither exists |
@@ -64,10 +64,14 @@ working. Recorded plainly so the viva answer is the same as the tracker:
 | Taxonomy mapping rules (F-15) | **None authored.** The lookup mechanism works; it has nothing to look up |
 | Thresholds | All provisional at 0.50, uncalibrated |
 
-Tests: **445 passed, 43 skipped** on SQLite, where the 43 skips are the
-PostgreSQL-only tests. All **43 of those passed against PostgreSQL 16** on
+Tests: **461 passed, 53 skipped** on SQLite, where the 53 skips are the
+PostgreSQL-only tests. **43 of those passed against PostgreSQL 16** on
 `privacy_auditor_frozen_20261105_test`, 2026-11-05 — 29 schema, 14 F-01
-search.
+search. The **10 C-53 tests have not been run against a server** and need a
+database upgraded to `0002_pattern_ops`.
+
+The schema now has **two migrations**: the frozen `0001_baseline` and the
+additive `0002_pattern_ops`. `privacy_auditor` is still at neither.
 
 ## Open items requiring the team
 

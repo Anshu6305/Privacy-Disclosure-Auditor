@@ -95,14 +95,18 @@ def main() -> int:
     try:
         meta = connection.execute(
             text(
-                "SELECT current_database(), datcollate, "
-                "(SELECT count(*) FROM application) "
+                "SELECT current_database(), datcollate, datctype, "
+                "(SELECT count(*) FROM application), "
+                "(SELECT string_agg(version_num, ',' ORDER BY version_num) "
+                " FROM alembic_version) "
                 "FROM pg_database WHERE datname = current_database()"
             )
         ).one()
         print(f"database : {meta[0]}")
-        print(f"collation: {meta[1]}")
-        print(f"rows in application: {meta[2]}")
+        print(f"datcollate: {meta[1]}")
+        print(f"datctype  : {meta[2]}")
+        print(f"rows in application: {meta[3]}")
+        print(f"alembic_version: {meta[4] or '(none)'}")
         if meta[2] < 1000:
             print(
                 "\nNote: with few rows a sequential scan is the correct plan "
@@ -120,6 +124,26 @@ def main() -> int:
         ):
             print(f"  {row[0]}\n    {row[1]}")
 
+        # indexdef omits the operator class when it is the default, so an
+        # index with text_ops and one with text_pattern_ops can print
+        # identically. pg_opclass is the only reliable source.
+        print("\noperator classes (from pg_opclass, not parsed from DDL):")
+        for row in connection.execute(
+            text(
+                """
+                SELECT c.relname, oc.opcname
+                FROM pg_index i
+                JOIN pg_class c ON c.oid = i.indexrelid
+                JOIN pg_class tb ON tb.oid = i.indrelid
+                JOIN unnest(i.indclass) WITH ORDINALITY AS u(oid, ord) ON TRUE
+                JOIN pg_opclass oc ON oc.oid = u.oid
+                WHERE tb.relname = 'application'
+                ORDER BY c.relname, u.ord
+                """
+            )
+        ):
+            print(f"  {row[0]:<42} {row[1]}")
+
         connection.execute(text("SET LOCAL enable_seqscan = off"))
         params = {"pattern": "wha%", "low": "wha", "high": "whb"}
 
@@ -134,11 +158,14 @@ def main() -> int:
             print(f"  => index used: {'yes' if used else 'NO (sequential scan)'}")
 
         print(
-            "\nIf the LIKE queries report NO and the range query reports yes, "
-            "the functional indexes are declared correctly but their opclass "
-            "cannot serve a prefix LIKE under this collation. That is a "
-            "schema question (text_pattern_ops, or a rewritten predicate) and "
-            "needs approval before anything is changed. See C-53."
+            "\nReading this output:\n"
+            "  Before 0002_pattern_ops is applied, the two LIKE queries report "
+            "NO and the range query reports yes. That is C-53.\n"
+            "  After it is applied, the LIKE queries should report yes with an "
+            "Index Cond using ~>=~ on a *_pattern index.\n"
+            "  The planner will still prefer a sequential scan at 300-500 rows "
+            "when enable_seqscan is left on. That is correct, and no "
+            "performance claim should be made from this script."
         )
     finally:
         transaction.rollback()

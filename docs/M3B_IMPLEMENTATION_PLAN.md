@@ -8,14 +8,20 @@ Scope: F-01 to F-07, requirements FR-01 to FR-07, task T1.
 | State | Items |
 |---|---|
 | **Completed** | F-01 `searchApplications`, F-03 `handleUnknownApplication`, `ApplicationRepository`. Commit `fc1a111`. 43 unit tests |
-| **Verified** | **43 PostgreSQL integration tests passed** on `privacy_auditor_frozen_20261105_test`, 2026-11-05 — 29 schema + 14 F-01 search. Results are correct on real PostgreSQL, not only on SQLite |
+| **Verified** | **43 PostgreSQL integration tests passed** on `privacy_auditor_frozen_20261105_test`, 2026-11-05 — 29 schema + 14 F-01 search. Results are correct on real PostgreSQL, not only on SQLite. C-53's own 10 tests are **written but not yet run against a server** |
 | **Pending** | F-02 `requestAudit`, F-04 `loadDeclaration`, F-05 `loadPolicyDocument`, F-06 `fetchLiveDisclosure` persistence, F-07 `recordProvenance` persistence, the corpus import command |
 | **Blocked** | All five pending functions, on the **D-1 faculty decision**. Nothing else blocks them |
 
-Two findings are open but block nothing: **C-53** (the ALG-11 functional
-indexes are inert for the prefix predicate — confirmed by diagnostic;
-resolution proposed in `docs/C53_RESOLUTION_NOTE.md`, awaiting approval) and
-**C-55** (search is prefix-only, so a substring query finds nothing).
+Two findings were open; one is now corrected. **C-53** (the ALG-11 functional
+indexes are inert for the prefix predicate) was confirmed by diagnostic and
+corrected on approval by the additive revision `0002_pattern_ops`; its
+PostgreSQL catalogue and `EXPLAIN` verification is still outstanding, with
+commands in `docs/C53_RESOLUTION_NOTE.md` §10. **C-55** (search is prefix-only,
+so a substring query finds nothing) remains open and blocks nothing.
+
+This is also the first time the schema moves past the frozen baseline. It does
+so additively: two indexes, no table, column or constraint touched, a reversing
+downgrade, and `0001_baseline_schema.py` unmodified.
 
 C-53 is a performance and documentation defect. The 43 passing integration
 tests establish that F-01 returns **correct** results; what the diagnostic

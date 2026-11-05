@@ -1265,3 +1265,132 @@ and the traceability matrix updated. **No migration, index, model, query or
 database was changed**, and no second Alembic revision was created — it is
 specified in the note and awaits approval, because moving past the frozen
 baseline for the first time is a precedent worth ruling on deliberately.
+
+---
+
+## 2026-11-05 — C-53 corrected: additive revision 0002_pattern_ops
+
+Approved and implemented. First time the schema moves past the frozen
+baseline, and it does so additively: two indexes, nothing else.
+
+### Files
+
+| File | Change |
+|---|---|
+| `backend/migrations/versions/0002_pattern_ops_search_indexes.py` | New revision |
+| `backend/app/db/models.py` | Two `Index` declarations added to `Application`; existing two untouched |
+| `tests/unit/test_pattern_ops_indexes.py` | New, 13 tests |
+| `tests/unit/test_migration_is_frozen.py` | Index-equivalence test restructured; three new tests |
+| `tests/integration/test_application_search_postgresql.py` | +10 C-53 tests |
+| `tests/integration/test_postgresql_schema.py` | Failure message corrected; no assertion removed |
+| `scripts/explain_application_search.py` | Now prints `datctype`, `alembic_version`, and operator classes from `pg_opclass` |
+
+### The detail the whole correction turns on
+
+Three ways to attach an operator class, two of which fail silently. Compiled
+against both dialects before choosing:
+
+```
+sa.text("lower(app_name) text_pattern_ops")
+   postgresql  (lower(app_name) text_pattern_ops)
+   sqlite      (lower(app_name) text_pattern_ops)     <- SQLite rejects this at execution
+
+func.lower(c).  postgresql_ops={"app_name": ...}
+   postgresql  (lower(app_name))                      <- operator class silently dropped
+
+func.lower(c).label("lower_app_name"), postgresql_ops={"lower_app_name": ...}
+   postgresql  (lower(app_name) text_pattern_ops)
+   sqlite      (lower(app_name))                      <- correct for both
+```
+
+`postgresql_ops` keys match column names or an expression's **label**, not the
+expression. Keyed on the column it compiles with no error and no warning and
+produces a default-class index that looks right in review and cannot serve the
+query. The third form needs no dialect guard, because `postgresql_ops` is
+ignored by other dialects.
+
+So the SQLite question raised in the proposal does not need answering: no
+guard, and the revision applies to in-memory SQLite as it stands. That is
+tested by **applying and reversing it**, not by compiling it.
+
+### Tests, and what they distinguish
+
+The old `test_functional_lower_indexes_exist` failed with "ALG-11's
+case-insensitive prefix search would not use it", which C-53 disproved — the
+index exists, is functional, and the search does not use it. Corrected to
+separate three properties, with no assertion removed:
+
+1. **existence** — in the catalogue at all;
+2. **expression correctness** — indexes `lower(col)`, not `col`;
+3. **operator-class correctness** — whether a prefix `LIKE` can use it. The
+   baseline pair **cannot**, by design, and that now lives in the docstring
+   rather than in a misleading message.
+
+`test_pattern_ops_opclass_in_catalogue` reads `pg_opclass` rather than parsing
+`pg_indexes.indexdef`, because `indexdef` **omits the operator class when it is
+the default** — a `text_ops` index and a `text_pattern_ops` index can print
+identically. That is the only check that catches the silently-dropped class,
+and it is the one C-15's original test was missing.
+
+`test_baseline_does_not_contain_the_c53_correction` asserts the frozen revision
+contains neither `text_pattern_ops` nor the two new names, so the fix cannot
+drift backwards into the historical record.
+
+### Verified — executed here
+
+| Check | Result |
+|---|---|
+| PostgreSQL DDL, Alembic offline mode | `CREATE INDEX ... (lower(app_name) text_pattern_ops)` for both |
+| Downgrade DDL, offline | drops exactly the two, reverses `alembic_version` |
+| Revision applies on SQLite | both indexes in `sqlite_master`, **no** `text_pattern_ops` in the stored SQL |
+| Downgrade on SQLite | `after_upgrade - before == {the two}`; `after_downgrade == before` |
+| New unit tests | 13 + 3 passed |
+| Full suite | **461 passed, 53 skipped** |
+| `ruff check .` | All checks passed |
+
+Offline mode is worth noting: it emits the real PostgreSQL SQL without a
+server, so "do not assume the operator class compiled" is answered at the DDL
+level by observation rather than argument.
+
+### Not verified — and I could not verify it
+
+**Nothing was executed against a PostgreSQL server.** Docker Desktop runs on
+the team Mac; it is not reachable from where these commands ran. The 10 C-53
+integration tests **skip** until a database upgraded to `0002_pattern_ops` is
+supplied, guarded on `alembic_version`. Skips are not passes.
+
+Outstanding, with commands in `docs/C53_RESOLUTION_NOTE.md` §10: the catalogue
+operator classes, the `EXPLAIN` eligibility of both prefix predicates, the
+combined-query plan and its `BitmapOr`, the upgrade/downgrade against a real
+server, and the database collation.
+
+### Databases
+
+`privacy_auditor`, `privacy_auditor_test` and
+`privacy_auditor_frozen_20261105_test` were not touched — not migrated, reset,
+truncated or dropped. **No test creates or drops a database.** Verification
+needs a new disposable one, and §10.3 gives the exact steps including a
+pre-check that refuses to reuse an existing name.
+
+Deliberate asymmetry worth knowing: run against the frozen database the suite
+gives **45 passed, 8 skipped** rather than 53 passed, because that database
+stays at the baseline. The skip guard working is itself the evidence that these
+tests cannot pass vacuously on an unmigrated database.
+
+### The complexity claim, kept as approved
+
+Phase 3's **O(log N + m)** is unchanged. The new indexes are what make it
+true: each branch of the `OR` becomes an index range scan of m matches,
+combined by `BitmapOr`, instead of today's full index walk with a filter, which
+is O(N).
+
+**No performance improvement is claimed.** At 300 to 500 rows PostgreSQL will
+still choose a sequential scan with `enable_seqscan` on, and that is correct.
+`enable_seqscan = off` is used only to ask the planner whether the index is
+*eligible*, and every test that uses it says so.
+
+### Carried forward
+
+C-55 unchanged — prefix-only search, so a substring query finds nothing.
+The generic-plan caveat stands and must be re-checked once F-01 sits behind an
+endpoint. D-1 untouched; `privacy_auditor` still at no revision.

@@ -122,6 +122,29 @@ class Application(Base):
         # search is later required.
         Index("ix_application_lower_name", func.lower(app_name)),
         Index("ix_application_lower_package", func.lower(package_name)),
+        # C-53. The two indexes above use the default `text_ops` operator
+        # class, which a prefix LIKE cannot use unless the database collation
+        # is C. Confirmed against PostgreSQL 16 on 2026-11-05: F-01's
+        # predicate produced no index condition. These two order byte-wise,
+        # which is LIKE's own semantics, so the planner can use them. Both
+        # pairs are kept: only the default class serves
+        # ORDER BY lower(app_name), which F-01 also issues.
+        #
+        # The expression is LABELLED and `postgresql_ops` is keyed on that
+        # label. Keying it on the column name instead compiles with no error
+        # and silently drops the operator class, giving an index that looks
+        # right and cannot serve the query. `postgresql_ops` is ignored by
+        # other dialects, so SQLite receives plain `(lower(app_name))`.
+        Index(
+            "ix_application_lower_name_pattern",
+            func.lower(app_name).label("lower_app_name"),
+            postgresql_ops={"lower_app_name": "text_pattern_ops"},
+        ),
+        Index(
+            "ix_application_lower_package_pattern",
+            func.lower(package_name).label("lower_package_name"),
+            postgresql_ops={"lower_package_name": "text_pattern_ops"},
+        ),
     )
 
 

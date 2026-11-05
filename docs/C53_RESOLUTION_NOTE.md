@@ -1,10 +1,17 @@
 # C-53 resolution note — ALG-11 index usability
 
-Date: 2026-11-05
-Status: **proposal awaiting approval.** No migration, index, model, query or
-database was changed in producing this note.
+Date: 2026-11-05 · revised 2026-11-05 after implementation
+Status: **implemented and approved; PostgreSQL verification outstanding.**
+Approved: 2026-11-05. Implemented as the additive revision `0002_pattern_ops`.
 Finding confirmed by: the C-53 diagnostic run on the team Mac against
 `privacy_auditor_frozen_20261105_test`, 2026-11-05.
+
+**What is verified and what is not.** The emitted PostgreSQL DDL, the SQLite
+compatibility, the upgrade/downgrade reversal and the full unit suite were
+executed and passed. **Nothing was executed against a PostgreSQL server**: the
+catalogue checks and the `EXPLAIN` eligibility tests are written and skip
+until a database upgraded to `0002_pattern_ops` is supplied. Section 10 has
+the commands. Skips are not passes.
 
 ---
 
@@ -251,11 +258,19 @@ reported.
 Nothing below has been created. All three parts must land together, because
 `test_every_index_matches_the_models` compares the models to the migration.
 
-### 8.1 New Alembic revision — `0002_pattern_ops_search_indexes.py`
+### 8.1 New Alembic revision — `0002_pattern_ops_search_indexes.py` (written)
 
-A **new** revision. `0001_baseline_schema.py` is not touched, and the
-assertion `source.count("op.create_index(") == 21` in
-`test_migration_is_frozen.py` is on `0001` only, so it is unaffected.
+Revision `0002_pattern_ops`, `down_revision = "0001_baseline"`.
+`0001_baseline_schema.py` is untouched, and the assertion
+`source.count("op.create_index(") == 21` in `test_migration_is_frozen.py` is on
+`0001` only, so it is unaffected.
+
+**As written, it differs from the sketch below in one way that matters:** the
+operator class is attached through `postgresql_ops` keyed on a **labelled**
+expression, not through `sa.text`. `sa.text("lower(app_name) text_pattern_ops")`
+compiles identically for *both* dialects, so SQLite would receive PostgreSQL
+syntax and reject it at execution. The labelled form is dialect-aware — see
+§10.2.
 
 ```python
 """Add text_pattern_ops functional indexes for ALG-11 prefix search (C-53).
@@ -291,11 +306,12 @@ def downgrade() -> None:
 Both operations are index-only. No table, column, constraint or data is
 touched, and the revision is reversible.
 
-**SQLite note.** The unit suite applies the baseline to in-memory SQLite, which
-rejects `text_pattern_ops`. Either the revision guards on
-`op.get_bind().dialect.name == "postgresql"`, or the unit tests continue to
-apply `0001` only. The second is simpler and matches what the suite does
-today; it should be decided before the revision is written.
+**SQLite question, resolved.** No dialect guard is needed. `postgresql_ops` is
+a dialect-specific option that other dialects ignore, so the same construct
+emits `(lower(app_name) text_pattern_ops)` for PostgreSQL and
+`(lower(app_name))` for SQLite. The revision therefore applies cleanly to the
+in-memory databases the unit suite uses, and that is tested by actually
+applying it — not by compiling it.
 
 ### 8.2 `backend/app/db/models.py` — two index declarations
 
@@ -323,20 +339,174 @@ Index("ix_application_lower_package_pattern",
 | `test_prefix_search_uses_an_index_condition` | **integration** | with `enable_seqscan = off`, `EXPLAIN` of the F-01 statement contains `Index Cond` and `~>=~`, and `BitmapOr` |
 | `test_functional_lower_indexes_exist` | integration, existing | **failure message needs correcting** — it currently says a `lower()` index means "ALG-11's case-insensitive prefix search would not use it" otherwise, which the diagnostic has disproved. The message asserts the very thing C-53 refutes |
 | existing 43 integration tests | unchanged | must still pass — results must not change, since the SQL does not |
+| `test_results_are_unchanged_by_the_new_indexes` | **integration** | the regression guard: same matches, same escaping, same case-insensitivity, same limit |
 | `scripts/explain_application_search.py` | re-run | the first two queries must change from "NO" to "yes" |
 
 **The regression guard that matters most** is the existing 43: because the SQL
 is unchanged, any difference in their results would mean the opclass altered
 semantics, which it must not.
 
-## 9. What is needed to proceed
+## 9. Known limitations
 
-1. The `collation:` line from the diagnostic output, for the record (§2).
-2. Approval to add a **second** Alembic revision — this is the first time the
-   schema moves past the frozen baseline, and it is a precedent worth ruling on
-   deliberately rather than by implication.
-3. A decision on the SQLite guard in §8.1.
-4. Confirmation that correcting the misleading failure message in
-   `test_functional_lower_indexes_exist` is in scope.
+1. **No performance improvement.** At 300–500 rows PostgreSQL will still
+   prefer a sequential scan with `enable_seqscan` on, and that is the correct
+   plan. The correction makes the approved **O(log N + m)** claim true — the
+   behaviour today is O(N), a full index walk with a filter — and keeps it true
+   if the corpus grows. No speed-up should be reported.
+2. **Generic plans.** Prefix extraction from a `LIKE` pattern happens at plan
+   time and needs the pattern as a constant. A *generic* plan has none, and
+   psycopg3 promotes a statement to a server-side prepared statement after a
+   few executions. The eligibility tests inline the pattern as a literal so
+   they measure the operator class rather than this. It must be re-checked once
+   F-01 sits behind an endpoint; `prepare_threshold=None` resolves it if it
+   bites.
+3. **Prefix-only search is unchanged.** C-55 still stands: a substring query
+   finds nothing. pg_trgm with GIN remains the documented upgrade path and is
+   not implemented.
+4. **The collation is still unrecorded.** See §10.1 — the query exists, it has
+   not been run.
+5. **`privacy_auditor` remains unmigrated**, so the correction is not applied
+   to any database the project actually uses yet.
+
+## 10. Verification — what to run
+
+Nothing in this section has been executed. PostgreSQL runs in Docker Desktop on
+the team Mac and is not reachable from where the implementation was carried
+out.
+
+### 10.1 Collation, read-only
+
+Run against any of the existing databases; it reads catalogue tables only and
+modifies nothing:
+
+```sql
+SELECT current_database(), datcollate, datctype
+FROM pg_database WHERE datname = current_database();
+```
+
+The diagnostic script prints the same two values, plus `alembic_version` and
+every index's operator class from `pg_opclass`:
+
+```
+TEST_DATABASE_URL="postgresql+psycopg://auditor:PASSWORD@localhost:5432/privacy_auditor_frozen_20261105_test" \
+  .venv/bin/python scripts/explain_application_search.py
+```
+
+**Record the `datcollate` value in this section when it is available.** The
+correction does not depend on it: `text_pattern_ops` is byte-wise under every
+collation. The one case it would change is `C` or `POSIX`, where the baseline
+indexes already serve a prefix `LIKE` and C-53 would not apply; the integration
+test skips with that explanation rather than measuring something else.
+
+### 10.2 PostgreSQL DDL — verified offline, no server needed
+
+Alembic's offline mode emits the real SQL without connecting. This was run and
+is the actual output:
+
+```
+$ cd backend && POSTGRES_PASSWORD=offline-dummy alembic upgrade 0001_baseline:0002_pattern_ops --sql
+
+CREATE INDEX ix_application_lower_name_pattern ON application (lower(app_name) text_pattern_ops);
+CREATE INDEX ix_application_lower_package_pattern ON application (lower(package_name) text_pattern_ops);
+UPDATE alembic_version SET version_num='0002_pattern_ops' WHERE alembic_version.version_num = '0001_baseline';
+```
+
+```
+$ alembic downgrade 0002_pattern_ops:0001_baseline --sql
+
+DROP INDEX ix_application_lower_package_pattern;
+DROP INDEX ix_application_lower_name_pattern;
+UPDATE alembic_version SET version_num='0001_baseline' WHERE alembic_version.version_num = '0002_pattern_ops';
+```
+
+The operator class is present in the emitted DDL. That answers the
+"do not assume it compiled" requirement at the DDL level; whether PostgreSQL
+*stored* it is a separate question, which §10.4 settles from `pg_opclass`.
+
+### 10.3 Disposable database — exact steps
+
+**The three existing databases are not to be touched**: `privacy_auditor`,
+`privacy_auditor_test`, `privacy_auditor_frozen_20261105_test`. None of them is
+migrated, reset, truncated or dropped by anything in this correction, and no
+test creates or drops a database.
+
+Create a new, uniquely named one. Substitute today's date and your password:
+
+```bash
+# 1. A name that cannot collide with anything that exists.
+NEW_DB=privacy_auditor_c53_20261105_test
+
+# 2. Confirm it does not already exist. If this prints a row, choose another
+#    name - do not reuse it.
+docker compose exec -T db psql -U auditor -d postgres \
+  -c "SELECT datname FROM pg_database WHERE datname = '$NEW_DB'"
+
+# 3. Create it. CREATE DATABASE cannot run inside a transaction, hence -c.
+docker compose exec -T db psql -U auditor -d postgres \
+  -c "CREATE DATABASE $NEW_DB"
+
+# 4. Apply the baseline and then C-53's revision to it, and nothing else.
+cd backend
+POSTGRES_DB=$NEW_DB ../.venv/bin/alembic upgrade head
+cd ..
+
+# 5. Confirm both revisions are recorded.
+docker compose exec -T db psql -U auditor -d $NEW_DB \
+  -c "SELECT version_num FROM alembic_version"
+```
+
+Step 4 uses `upgrade head`, which applies `0001_baseline` then
+`0002_pattern_ops` to the **new** database only. `POSTGRES_DB` is set for that
+one command and does not persist.
+
+If step 2 prints a row, or step 3 fails for any reason, **stop**. Do not fall
+back to an existing database. Report the error instead.
+
+### 10.4 The tests
+
+Against the **disposable** database, where the C-53 tests execute:
+
+```bash
+TEST_DATABASE_URL="postgresql+psycopg://auditor:PASSWORD@localhost:5432/privacy_auditor_c53_20261105_test" \
+  .venv/bin/python -m pytest tests/integration -p no:warnings -v
+```
+
+Expect **53 passed**: the 43 that passed before, plus the 10 C-53 tests.
+
+Against the **frozen** database, which stays at the baseline:
+
+```bash
+TEST_DATABASE_URL="postgresql+psycopg://auditor:PASSWORD@localhost:5432/privacy_auditor_frozen_20261105_test" \
+  .venv/bin/python -m pytest tests/integration -p no:warnings -v
+```
+
+Expect **45 passed, 8 skipped**: the original 43 still pass, the two
+`text_ops` catalogue checks now pass there too, and the eight tests needing
+`0002_pattern_ops` skip with a message saying so. That asymmetry is
+deliberate — it proves the skip guard works rather than silently passing on an
+unmigrated database.
+
+Then re-run the diagnostic from §10.1 against the disposable database. The two
+prefix `LIKE` rows must change from `NO` to `yes`.
+
+### 10.5 Downgrade, on the disposable database only
+
+```bash
+cd backend && POSTGRES_DB=privacy_auditor_c53_20261105_test ../.venv/bin/alembic downgrade 0001_baseline
+```
+
+Then re-run §10.4 against it: the eight C-53 tests should skip again, and the
+43 originals must still pass. That demonstrates reversibility against a real
+server rather than against SQLite alone.
+
+Cleanup is yours to decide. `DROP DATABASE privacy_auditor_c53_20261105_test`
+removes only the disposable one; nothing in the project requires it to survive,
+and nothing requires it to be dropped either.
+
+## 11. Outstanding
+
+1. Everything in §10 — none of it has been executed.
+2. The `datcollate` value, for §10.1.
+3. Whether the disposable database is kept or dropped after verification.
 
 D-1 is unaffected: nothing here touches `disclosure_snapshot`.

@@ -1026,7 +1026,8 @@ the `LIKE` is not.
 search changes, and on a corpus of 300 to 500 applications a sequential scan is
 not noticeable. It matters for NFR performance claims, not for results.
 
-**Status:** **confirmed, resolution proposed, awaiting approval.**
+**Status:** **confirmed; correction implemented as an additive migration;
+PostgreSQL verification outstanding.**
 
 The diagnostic was run on the team Mac on 2026-11-05 against
 `privacy_auditor_frozen_20261105_test`. Both prefix `LIKE` queries produced no
@@ -1047,6 +1048,35 @@ dotted package names make a silently-missing result a real risk.
 Correctness was never affected, and the 43 integration tests that passed on
 2026-11-05 show F-01 returning correct results. At 300 to 500 applications the
 fix buys no measurable speed; it makes the approved O(log N + m) claim true.
+
+**Implemented 2026-11-05**, on approval, as revision `0002_pattern_ops` —
+`down_revision = "0001_baseline"`, two `op.create_index` calls, a reversing
+downgrade, and nothing else. The frozen baseline is untouched and still
+contains neither `text_pattern_ops` nor the two new index names, which is now
+asserted by `test_baseline_does_not_contain_the_c53_correction`.
+
+The operator class is attached through `postgresql_ops` keyed on a **labelled**
+expression. This is the detail the correction turns on: `postgresql_ops` keyed
+on the column name — the obvious spelling — compiles with no error and
+silently drops the operator class, and `sa.text("lower(x) text_pattern_ops")`
+compiles for SQLite too and is then rejected at execution. The labelled form
+emits `(lower(app_name) text_pattern_ops)` for PostgreSQL and
+`(lower(app_name))` for SQLite, so no dialect guard is needed and the unit
+suite's in-memory databases still build.
+
+Verified: the emitted PostgreSQL DDL, via Alembic offline mode, which needs no
+server; the revision applying **and reversing** on SQLite; 461 passed, 53
+skipped; ruff clean. **Not verified:** anything requiring a PostgreSQL server.
+The catalogue and `EXPLAIN` tests are written and skip until a database
+upgraded to `0002_pattern_ops` is supplied; commands are in
+`docs/C53_RESOLUTION_NOTE.md` §10. Skips are not passes.
+
+Phase 3's **O(log N + m)** claim is retained unchanged. The additional indexes
+are what make it true: with a byte-wise operator class each branch of the `OR`
+becomes an index range scan of m matches, combined by `BitmapOr`, in place of
+today's full index walk with a filter, which is O(N). At 300 to 500
+applications the planner will still choose a sequential scan, and no
+performance improvement is claimed.
 
 ### C-54 F-01 result limit and minimum query length are provisional
 
