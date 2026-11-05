@@ -47,14 +47,52 @@ def revision():
     return module
 
 
+#: Every revision, in order. The model-equivalence tests must compare the
+#: models against the **whole chain**, not against the baseline alone: the
+#: models moved past 0001 when C-53 added indexes and again when D-1 Option A
+#: restructured disclosure_snapshot. Comparing them to 0001 only would fail for
+#: a correct schema, which is the same category error C-56 was.
+REVISION_FILES: tuple[str, ...] = (
+    "0001_baseline_schema.py",
+    "0002_pattern_ops_search_indexes.py",
+    "0003_collection_event_snapshot.py",
+)
+
+
+def _load(filename: str):
+    spec = importlib.util.spec_from_file_location(filename, VERSIONS / filename)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @pytest.fixture
-def migrated_engine(revision):
-    """An empty database with the frozen revision applied to it."""
+def baseline_engine(revision):
+    """An empty database with the **frozen baseline only** applied."""
     engine = create_engine("sqlite://")
     with engine.connect() as connection:
         context = MigrationContext.configure(connection)
         with Operations.context(context):
             revision.upgrade()
+        connection.commit()
+        yield engine
+
+
+@pytest.fixture
+def migrated_engine():
+    """An empty database with **every** revision applied, in order.
+
+    This is what the models should match. Each revision is applied in its own
+    operations context, because a batch operation is planned against the table
+    as reflected when its batch opens.
+    """
+    engine = create_engine("sqlite://")
+    modules = [_load(name) for name in REVISION_FILES]
+    with engine.connect() as connection:
+        for module in modules:
+            with Operations.context(MigrationContext.configure(connection)):
+                module.upgrade()
         connection.commit()
         yield engine
 
@@ -111,8 +149,8 @@ def test_revision_identity_is_unchanged(revision):
 # ---------------------------------------------------------------------------
 
 
-def test_migration_creates_exactly_the_model_tables(migrated_engine):
-    created = set(inspect(migrated_engine).get_table_names())
+def test_migration_creates_exactly_the_model_tables(baseline_engine):
+    created = set(inspect(baseline_engine).get_table_names())
     assert created == set(Base.metadata.tables)
     assert len(created) == 16
 
@@ -165,11 +203,12 @@ PATTERN_FUNCTIONAL_INDEXES = {
 def test_every_index_matches_the_models(migrated_engine):
     """The models and the migrations declare the same indexes.
 
-    ``migrated_engine`` applies the **baseline only**, so the four
-    expression-based indexes are excluded from the comparison and checked
-    against the revision sources below. Excluding them is not a weakening:
-    SQLite cannot reflect an expression index at all, so including them would
-    assert nothing on either side.
+    ``migrated_engine`` applies every revision, so this compares the models
+    against the schema as actually deployed. The four expression-based indexes
+    are excluded because SQLite cannot reflect an expression index at all, so
+    including them would assert nothing on either side; they are checked
+    against the revision sources below and against the real catalogue in the
+    integration suite.
     """
     inspector = inspect(migrated_engine)
 
@@ -271,7 +310,14 @@ def test_check_constraints_match_the_models(migrated_engine):
         if isinstance(c, CheckConstraint) and c.name
     }
     assert migrated == expected
-    assert len(expected) == 28
+    # 28 at the baseline; 32 after revision 0003. The restored collection-event
+    # snapshot (D-1 Option A) replaced one source-type CHECK with six that hold
+    # a partial event together: the status vocabulary, the nullable hash
+    # length, the path/hash pairing, at-least-one-source, a stored document
+    # implying its URL, and the two status/URL agreements. The set equality
+    # above is the real assertion; the count is here so an accidental loss is
+    # noticed rather than absorbed.
+    assert len(expected) == 32
 
 
 def test_foreign_keys_match_the_models(migrated_engine):
@@ -280,7 +326,11 @@ def test_foreign_keys_match_the_models(migrated_engine):
         len(inspector.get_foreign_keys(name)) for name in Base.metadata.tables
     )
     expected = sum(len(t.foreign_keys) for t in Base.metadata.tables.values())
-    assert migrated == expected == 27
+    # 27 at the baseline; 26 after revision 0003. audit_run referenced two
+    # snapshots and now references one collection event, which is what DOC-1
+    # resolved: Phase 3 section 10.3's "seven foreign keys" was the error and
+    # section 10.2 stands.
+    assert migrated == expected == 26
 
 
 # ---------------------------------------------------------------------------

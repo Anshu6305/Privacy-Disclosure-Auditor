@@ -52,6 +52,7 @@ can run (§2.2).
 | **C-53** pattern-class search indexes, revision `0002_pattern_ops` | **Tested and verified** | PostgreSQL 16, 2026-11-05, `privacy_auditor_c53_20261105d_test`. Operator classes, collation `en_US.utf8`, 56 passed applied / 49 passed + 7 skipped after downgrade, baseline indexes retained, EXPLAIN eligibility asserted. **Closed** |
 | **C-56** a test asserted one migration revision | **Fixed and verified** | Four ancestry-based tests from Alembic's revision graph; both migration states exercised on PostgreSQL |
 | **C-57** `dict(CursorResult)` TypeError | **Fixed and verified** | `.all()` then `dict(rows)`; passed in both states |
+| **C-59** D-1 Option A: collection-event snapshot restored | **Implemented** | Revision `0003_collection_event`. 6 FKs on `audit_run` (DOC-1 resolved), 7 snapshot CHECKs, `status` (E-2) and three-state `declares_no_data_collected`. SQLite up/down verified; **PostgreSQL verification outstanding** via `scripts/verify_migrations.sh` |
 | **C-58** diagnostic indexed a grown result tuple | **Fixed** | Named unpacking; arity checked against the script's own SQL. Did not affect C-53's verification — the eligibility assertions are in the test suite |
 
 ### Established facts, for reference

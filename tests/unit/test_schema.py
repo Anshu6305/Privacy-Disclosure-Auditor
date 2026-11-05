@@ -40,6 +40,10 @@ from analysis.vocabulary import (
     ALIGNMENT_LABELS,
     GOLD_LABELS,
     RECORD_TYPES,
+    SNAPSHOT_COMPLETE,
+    SNAPSHOT_DECLARATION_ONLY,
+    SNAPSHOT_FETCH_FAILED,
+    SNAPSHOT_POLICY_ONLY,
     VERDICT_UNDETERMINED,
     VERDICTS,
 )
@@ -64,25 +68,25 @@ def session() -> Session:
 
 @pytest.fixture
 def seed(session: Session) -> dict:
-    """A minimal valid graph: app, two snapshots, mapping, three models, audit."""
+    """A minimal valid graph: app, one collection event, mapping, 3 models, audit."""
     app = Application(package_name="com.example.app", app_name="Example App")
     session.add(app)
     session.flush()
 
-    ds = DisclosureSnapshot(
+    # One collection event covering both sources, per D-1 Option A. The
+    # fixture previously created two per-source rows; that was the deviation
+    # revision 0003 corrects.
+    snapshot = DisclosureSnapshot(
         app_id=app.app_id,
-        source_type="data_safety",
-        source_url="https://play.google.com/store/apps/details?id=com.example.app",
-        retrieval_method="scraper",
-        content_sha256="a" * 64,
-    )
-    policy = DisclosureSnapshot(
-        app_id=app.app_id,
-        source_type="privacy_policy",
-        source_url="https://example.com/privacy",
-        retrieval_method="http_get",
-        content_sha256="b" * 64,
-        storage_path="data/policies/raw/bb.html",
+        source_url_listing=(
+            "https://play.google.com/store/apps/details?id=com.example.app"
+        ),
+        source_url_policy="https://example.com/privacy",
+        retrieval_mode="manual_import",
+        policy_doc_path="data/policies/raw/bb.html",
+        policy_doc_sha256="b" * 64,
+        status=SNAPSHOT_COMPLETE,
+        declares_no_data_collected=False,
     )
     mapping = TaxonomyMappingVersion(version_label="v1", is_active=True)
     models = [
@@ -94,18 +98,18 @@ def seed(session: Session) -> dict:
         )
         for task in ("classification", "span_extraction", "alignment")
     ]
-    session.add_all([ds, policy, mapping, *models])
+    session.add_all([snapshot, mapping, *models])
     session.flush()
 
     segment = PolicySegment(
-        snapshot_id=policy.snapshot_id,
+        snapshot_id=snapshot.snapshot_id,
         segment_index=0,
         segment_text="We collect your email address to send you updates.",
         char_start=0,
         char_end=50,
     )
     declared = DeclaredPractice(
-        snapshot_id=ds.snapshot_id,
+        snapshot_id=snapshot.snapshot_id,
         ds_category="Personal info",
         ds_data_type="Email address",
         is_collected=True,
@@ -115,8 +119,7 @@ def seed(session: Session) -> dict:
 
     audit = AuditRun(
         app_id=app.app_id,
-        ds_snapshot_id=ds.snapshot_id,
-        policy_snapshot_id=policy.snapshot_id,
+        snapshot_id=snapshot.snapshot_id,
         taxonomy_mapping_version_id=mapping.taxonomy_mapping_version_id,
         classification_model_id=models[0].model_version_id,
         span_model_id=models[1].model_version_id,
@@ -129,8 +132,7 @@ def seed(session: Session) -> dict:
 
     return {
         "app": app,
-        "ds": ds,
-        "policy": policy,
+        "snapshot": snapshot,
         "mapping": mapping,
         "models": models,
         "segment": segment,
@@ -159,11 +161,28 @@ def test_exactly_sixteen_tables():
     assert len(ALL_TABLES) == 16
 
 
-def test_audit_run_has_seven_not_null_foreign_keys(session: Session):
-    """Reproducibility depends on every input being recorded."""
+def test_audit_run_has_six_not_null_foreign_keys(session: Session):
+    """Reproducibility depends on every input being recorded.
+
+    **Six, not seven.** Under D-1 Option A a snapshot is one collection event
+    covering both sources, so ``audit_run`` references one snapshot rather than
+    two. Phase 3 section 10.3 said "seven", which DOC-1 identified as the
+    error; section 10.2 stands as approved.
+
+    The count is still asserted exactly, and each one is still required to be
+    NOT NULL, so a future change that made an input optional would fail here.
+    """
     table = Base.metadata.tables["audit_run"]
     fk_columns = {fk.parent.name for fk in table.foreign_keys}
-    assert len(fk_columns) == 7
+    assert fk_columns == {
+        "app_id",
+        "snapshot_id",
+        "taxonomy_mapping_version_id",
+        "classification_model_id",
+        "span_model_id",
+        "alignment_model_id",
+    }
+    assert len(fk_columns) == 6
     for name in fk_columns:
         assert not table.columns[name].nullable, f"{name} must be NOT NULL"
 
@@ -171,8 +190,10 @@ def test_audit_run_has_seven_not_null_foreign_keys(session: Session):
 def test_policy_documents_are_not_stored_in_the_database(session: Session):
     """The snapshot table holds a path and a hash, not the document body."""
     columns = set(Base.metadata.tables["disclosure_snapshot"].columns.keys())
-    assert "storage_path" in columns
-    assert "content_sha256" in columns
+    # Renamed by revision 0003: under Option A these describe the policy
+    # document, the only body this table references.
+    assert "policy_doc_path" in columns
+    assert "policy_doc_sha256" in columns
     for forbidden in ("content", "body", "html", "document_text", "raw_text"):
         assert forbidden not in columns
 
@@ -570,20 +591,29 @@ def test_completed_audit_must_have_a_completion_time(session: Session, seed):
     session.rollback()
 
 
-def test_audit_cannot_compare_a_snapshot_with_itself(session: Session, seed):
-    rejects(
-        session,
-        AuditRun(
-            app_id=seed["app"].app_id,
-            ds_snapshot_id=seed["ds"].snapshot_id,
-            policy_snapshot_id=seed["ds"].snapshot_id,
-            taxonomy_mapping_version_id=seed["mapping"].taxonomy_mapping_version_id,
-            classification_model_id=seed["models"][0].model_version_id,
-            span_model_id=seed["models"][1].model_version_id,
-            alignment_model_id=seed["models"][2].model_version_id,
-            threshold_config={},
-        ),
-    )
+def test_an_audit_references_exactly_one_collection_event(session: Session):
+    """Replaces test_audit_cannot_compare_a_snapshot_with_itself.
+
+    That test existed because the deviated schema had two snapshot foreign
+    keys and a CHECK stopped them being equal — an audit comparing a
+    declaration with itself would have been meaningless. Under D-1 Option A
+    one snapshot *is* both sources, so there is nothing to compare with
+    itself and the CHECK has no subject.
+
+    This is not a weakening: the invariant moves from a constraint that could
+    be dropped to a structure in which the error cannot be expressed. What is
+    asserted here is that structure, so re-introducing a second snapshot
+    reference would fail.
+    """
+    table = Base.metadata.tables["audit_run"]
+    snapshot_fks = {
+        fk.parent.name
+        for fk in table.foreign_keys
+        if fk.column.table.name == "disclosure_snapshot"
+    }
+    assert snapshot_fks == {"snapshot_id"}
+    assert "ds_snapshot_id" not in table.columns
+    assert "policy_snapshot_id" not in table.columns
 
 
 def test_audit_requires_an_existing_application(session: Session, seed):
@@ -592,8 +622,7 @@ def test_audit_requires_an_existing_application(session: Session, seed):
         session,
         AuditRun(
             app_id=999_999,
-            ds_snapshot_id=seed["ds"].snapshot_id,
-            policy_snapshot_id=seed["policy"].snapshot_id,
+            snapshot_id=seed["snapshot"].snapshot_id,
             taxonomy_mapping_version_id=seed["mapping"].taxonomy_mapping_version_id,
             classification_model_id=seed["models"][0].model_version_id,
             span_model_id=seed["models"][1].model_version_id,
@@ -609,8 +638,7 @@ def test_threshold_config_is_required(session: Session, seed):
         session,
         AuditRun(
             app_id=seed["app"].app_id,
-            ds_snapshot_id=seed["ds"].snapshot_id,
-            policy_snapshot_id=seed["policy"].snapshot_id,
+            snapshot_id=seed["snapshot"].snapshot_id,
             taxonomy_mapping_version_id=seed["mapping"].taxonomy_mapping_version_id,
             classification_model_id=seed["models"][0].model_version_id,
             span_model_id=seed["models"][1].model_version_id,
@@ -629,15 +657,20 @@ def test_package_name_is_unique(session: Session, seed):
     rejects(session, Application(package_name="com.example.app", app_name="Clone"))
 
 
-def test_snapshot_source_type_is_restricted(session: Session, seed):
+def test_snapshot_status_is_restricted(session: Session, seed):
+    """E-2's closed value set. An unrecognised outcome must not be storable.
+
+    Replaces test_snapshot_source_type_is_restricted: under D-1 Option A a
+    snapshot is a collection event rather than a source, so source_type is
+    gone and `status` is the column carrying a restricted vocabulary.
+    """
     rejects(
         session,
         DisclosureSnapshot(
             app_id=seed["app"].app_id,
-            source_type="app_store_listing",
-            source_url="https://example.com",
-            retrieval_method="http_get",
-            content_sha256="c" * 64,
+            source_url_listing="https://example.com",
+            retrieval_mode="http_get",
+            status="partially_maybe",
         ),
     )
 
@@ -648,19 +681,125 @@ def test_snapshot_hash_must_be_a_full_sha256(session: Session, seed):
         session,
         DisclosureSnapshot(
             app_id=seed["app"].app_id,
-            source_type="privacy_policy",
-            source_url="https://example.com",
-            retrieval_method="http_get",
-            content_sha256="deadbeef",
+            source_url_policy="https://example.com",
+            retrieval_mode="http_get",
+            policy_doc_path="data/policies/raw/x.html",
+            policy_doc_sha256="deadbeef",
+            status=SNAPSHOT_POLICY_ONLY,
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Collection-event constraints (D-1 Option A)
+# ---------------------------------------------------------------------------
+
+
+def test_snapshot_must_carry_at_least_one_source(session: Session, seed):
+    """An event that captured nothing is not a collection event."""
+    rejects(
+        session,
+        DisclosureSnapshot(
+            app_id=seed["app"].app_id,
+            retrieval_mode="http_get",
+            status=SNAPSHOT_FETCH_FAILED,
+        ),
+    )
+
+
+def test_policy_document_and_hash_travel_together(session: Session, seed):
+    """A path without a hash cannot be verified; a hash without a path refers
+    to nothing."""
+    rejects(
+        session,
+        DisclosureSnapshot(
+            app_id=seed["app"].app_id,
+            source_url_policy="https://example.com/privacy",
+            retrieval_mode="http_get",
+            policy_doc_path="data/policies/raw/x.html",
+            status=SNAPSHOT_POLICY_ONLY,
+        ),
+    )
+
+
+def test_a_stored_policy_document_requires_its_url(session: Session, seed):
+    rejects(
+        session,
+        DisclosureSnapshot(
+            app_id=seed["app"].app_id,
+            source_url_listing="https://play.google.com/x",
+            retrieval_mode="http_get",
+            policy_doc_path="data/policies/raw/x.html",
+            policy_doc_sha256="c" * 64,
+            status=SNAPSHOT_DECLARATION_ONLY,
+        ),
+    )
+
+
+def test_a_status_claiming_the_declaration_requires_the_listing_url(
+    session: Session, seed
+):
+    """`complete` must not be recordable for a half-finished event."""
+    rejects(
+        session,
+        DisclosureSnapshot(
+            app_id=seed["app"].app_id,
+            source_url_policy="https://example.com/privacy",
+            retrieval_mode="http_get",
+            status=SNAPSHOT_COMPLETE,
+        ),
+    )
+
+
+def test_a_status_claiming_the_policy_requires_the_policy_url(
+    session: Session, seed
+):
+    rejects(
+        session,
+        DisclosureSnapshot(
+            app_id=seed["app"].app_id,
+            source_url_listing="https://play.google.com/x",
+            retrieval_mode="http_get",
+            status=SNAPSHOT_POLICY_ONLY,
+        ),
+    )
+
+
+def test_declares_no_data_collected_is_three_state(session: Session, seed):
+    """NULL and False are different facts.
+
+    NULL means the Data Safety section was never read, False means it was read
+    and carries no app-level no-collection statement. Collapsing them would
+    turn a retrieval failure into an explicit negative declaration, which is
+    the one thing this column exists to prevent.
+    """
+    unknown = DisclosureSnapshot(
+        app_id=seed["app"].app_id,
+        source_url_policy="https://example.com/privacy",
+        retrieval_mode="http_get",
+        status=SNAPSHOT_POLICY_ONLY,
+    )
+    session.add(unknown)
+    session.flush()
+    assert unknown.declares_no_data_collected is None
+
+    declared_none = DisclosureSnapshot(
+        app_id=seed["app"].app_id,
+        source_url_listing="https://play.google.com/y",
+        retrieval_mode="http_get",
+        status=SNAPSHOT_DECLARATION_ONLY,
+        declares_no_data_collected=True,
+    )
+    session.add(declared_none)
+    session.flush()
+    assert declared_none.declares_no_data_collected is True
 
 
 def test_segment_index_is_unique_within_a_snapshot(session: Session, seed):
     rejects(
         session,
         PolicySegment(
-            snapshot_id=seed["policy"].snapshot_id,
+            snapshot_id=seed["snapshot"].snapshot_id,
             segment_index=0,
             segment_text="duplicate index",
             char_start=100,
@@ -673,7 +812,7 @@ def test_segment_offsets_must_be_ordered(session: Session, seed):
     rejects(
         session,
         PolicySegment(
-            snapshot_id=seed["policy"].snapshot_id,
+            snapshot_id=seed["snapshot"].snapshot_id,
             segment_index=7,
             segment_text="bad offsets",
             char_start=90,

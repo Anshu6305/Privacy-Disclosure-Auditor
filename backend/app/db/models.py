@@ -53,7 +53,7 @@ from analysis.vocabulary import (
     MODEL_TASKS,
     MODEL_VARIANTS,
     RECORD_TYPES,
-    SOURCE_TYPES,
+    SNAPSHOT_STATUSES,
     SPAN_TYPES,
     VERDICTS,
 )
@@ -152,10 +152,21 @@ class Application(Base):
 # 2. disclosure_snapshot
 # ===========================================================================
 class DisclosureSnapshot(Base):
-    """One retrieval of one disclosure source for one application.
+    """One **collection event** for one application: both disclosure sources.
+
+    This is the approved Phase 3 section 10.2 design, restored by the D-1
+    ruling of 2026-11-05 (Option A). The implementation had deviated to one row
+    per source; that deviation is corrected by revision ``0003_collection_event``.
 
     Snapshots are append-only. A policy that changes produces a new row, which
     is what makes audit comparison over time (F-30) meaningful.
+
+    **A collection event can be partial.** Phase 1 named scraper breakage the
+    project's highest-probability risk, so an event where one source was
+    captured and the other was not is expected rather than exceptional. Both
+    URLs are therefore nullable and ``status`` records what actually happened.
+    A missing source must never read downstream as "this application declares
+    nothing".
     """
 
     __tablename__ = "disclosure_snapshot"
@@ -164,21 +175,47 @@ class DisclosureSnapshot(Base):
     app_id: Mapped[int] = mapped_column(
         ForeignKey("application.app_id", ondelete="CASCADE"), nullable=False
     )
-    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    source_url: Mapped[str] = mapped_column(Text, nullable=False)
-    retrieved_at: Mapped[datetime] = mapped_column(
+    #: When this collection event happened. One timestamp for the event, not
+    #: one per source: that is the trade-off Option A makes, and the per-source
+    #: times remain in the filesystem corpus record.
+    collected_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    retrieval_method: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    #: The Play Store listing the Data Safety declaration came from. NULL when
+    #: that source was not captured in this event.
+    source_url_listing: Mapped[str | None] = mapped_column(Text)
+    #: The privacy policy document's URL. NULL when it was not captured.
+    source_url_policy: Mapped[str | None] = mapped_column(Text)
+
+    retrieval_mode: Mapped[str] = mapped_column(String(64), nullable=False)
 
     #: Path on the filesystem. The document body is never stored in the
     #: database, per the Phase 3 storage decision.
-    storage_path: Mapped[str | None] = mapped_column(Text)
-    #: SHA-256 of the retrieved bytes. Ties the stored file to this row and
-    #: lets a later retrieval be recognised as unchanged.
-    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    content_bytes: Mapped[int | None] = mapped_column(Integer)
-    http_status: Mapped[int | None] = mapped_column(Integer)
+    policy_doc_path: Mapped[str | None] = mapped_column(Text)
+    #: SHA-256 of the policy document bytes. Ties the stored file to this row
+    #: and lets a later retrieval be recognised as unchanged. Nullable because
+    #: an event without a policy has nothing to hash.
+    policy_doc_sha256: Mapped[str | None] = mapped_column(String(64))
+    policy_doc_bytes: Mapped[int | None] = mapped_column(Integer)
+    policy_http_status: Mapped[int | None] = mapped_column(Integer)
+
+    #: What this collection event achieved. Values in
+    #: :data:`analysis.vocabulary.SNAPSHOT_STATUSES`.
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    #: Google's app-level "this app doesn't collect or share any user data"
+    #: statement. **Three-state on purpose:**
+    #:
+    #: * ``True``  — the section was read and carries that statement.
+    #: * ``False`` — the section was read and does not carry it.
+    #: * ``None``  — the section was not read, so nothing is known.
+    #:
+    #: NULL and False are different facts, and conflating them would turn a
+    #: retrieval failure into an explicit negative declaration. That is the one
+    #: thing this column exists to prevent.
+    declares_no_data_collected: Mapped[bool | None] = mapped_column(Boolean)
+
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     application: Mapped[Application] = relationship(back_populates="snapshots")
@@ -190,17 +227,45 @@ class DisclosureSnapshot(Base):
     )
 
     __table_args__ = (
-        CheckConstraint(_in_set("source_type", SOURCE_TYPES), name="ck_snapshot_source_type"),
-        CheckConstraint("length(content_sha256) = 64", name="ck_snapshot_sha256_length"),
+        CheckConstraint(_in_set("status", SNAPSHOT_STATUSES), name="ck_snapshot_status"),
+        CheckConstraint(
+            "policy_doc_sha256 IS NULL OR length(policy_doc_sha256) = 64",
+            name="ck_snapshot_sha256_length",
+        ),
+        # A stored document and its hash travel together. A path without a
+        # hash cannot be verified; a hash without a path refers to nothing.
+        CheckConstraint(
+            "(policy_doc_path IS NULL) = (policy_doc_sha256 IS NULL)",
+            name="ck_snapshot_policy_doc_pairing",
+        ),
+        # An event that captured nothing from either source is not a
+        # collection event. It is a failure, and belongs in provenance rather
+        # than as a snapshot row with no content.
+        CheckConstraint(
+            "source_url_listing IS NOT NULL OR source_url_policy IS NOT NULL",
+            name="ck_snapshot_has_a_source",
+        ),
+        # A policy document implies the policy source was reached.
+        CheckConstraint(
+            "policy_doc_path IS NULL OR source_url_policy IS NOT NULL",
+            name="ck_snapshot_policy_doc_requires_url",
+        ),
+        # The statuses that claim a source must have that source's URL. This
+        # is what stops 'complete' being recorded for a half-finished event.
+        CheckConstraint(
+            "status NOT IN ('complete', 'declaration_only', 'declaration_absent') "
+            "OR source_url_listing IS NOT NULL",
+            name="ck_snapshot_declaration_status_has_listing",
+        ),
+        CheckConstraint(
+            "status NOT IN ('complete', 'policy_only') "
+            "OR source_url_policy IS NOT NULL",
+            name="ck_snapshot_policy_status_has_url",
+        ),
         # Phase 3 section 10.3 requires a descending time ordering, because
         # history queries (FR-25) read newest first.
-        Index(
-            "ix_snapshot_app_source",
-            "app_id",
-            "source_type",
-            desc("retrieved_at"),
-        ),
-        Index("ix_snapshot_sha256", "content_sha256"),
+        Index("ix_snapshot_app_collected", "app_id", desc("collected_at")),
+        Index("ix_snapshot_policy_sha256", "policy_doc_sha256"),
     )
 
 
@@ -481,9 +546,10 @@ class TaxonomyMappingEntry(Base):
 class AuditRun(Base):
     """One audit of one application, and its queue entry.
 
-    The seven NOT NULL foreign keys are what make a report reproducible: both
-    disclosure snapshots, the taxonomy mapping version, and the three model
-    versions used. Nothing about the inputs can be inferred after the fact.
+    The six NOT NULL foreign keys are what make a report reproducible: the
+    application, the collection event, the taxonomy mapping version, and the
+    three model versions used. Nothing about the inputs can be inferred after
+    the fact.
 
     Queue semantics: a row is created ``queued``; a worker claims it by setting
     ``claimed_at`` and ``running``; it ends ``completed`` or ``failed`` with
@@ -496,10 +562,11 @@ class AuditRun(Base):
     app_id: Mapped[int] = mapped_column(
         ForeignKey("application.app_id", ondelete="CASCADE"), nullable=False
     )
-    ds_snapshot_id: Mapped[int] = mapped_column(
-        ForeignKey("disclosure_snapshot.snapshot_id"), nullable=False
-    )
-    policy_snapshot_id: Mapped[int] = mapped_column(
+    #: The single collection event this audit read, per D-1 Option A. Phase 3
+    #: section 10.2 specifies one snapshot per event, so one foreign key here
+    #: rather than two. Section 10.3's "seven foreign keys" was the error
+    #: (DOC-1); there are six.
+    snapshot_id: Mapped[int] = mapped_column(
         ForeignKey("disclosure_snapshot.snapshot_id"), nullable=False
     )
     taxonomy_mapping_version_id: Mapped[int] = mapped_column(
@@ -547,10 +614,7 @@ class AuditRun(Base):
             "(status <> 'completed') OR (completed_at IS NOT NULL)",
             name="ck_audit_completed_has_timestamp",
         ),
-        CheckConstraint(
-            "ds_snapshot_id <> policy_snapshot_id",
-            name="ck_audit_distinct_snapshots",
-        ),
+
         # The queue scan: oldest queued first.
         Index("ix_audit_queue", "status", "requested_at"),
         Index("ix_audit_app_history", "app_id", desc("requested_at")),

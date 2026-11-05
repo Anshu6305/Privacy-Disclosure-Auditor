@@ -9,7 +9,9 @@ is not reachable from a development session
 locally and their output reported back. Until then C-53 is **Implemented**, not
 **Tested and verified**.
 
-**`bash scripts/verify_c53.sh` now runs all of this.** This document remains
+**`bash scripts/verify_migrations.sh` now runs all of this** (renamed from
+`verify_c53.sh`, since it verifies the whole revision chain rather than C-53
+alone). This document remains
 the explanation of what each step checks and why; the script is what to
 execute. Run either from the repository root.
 

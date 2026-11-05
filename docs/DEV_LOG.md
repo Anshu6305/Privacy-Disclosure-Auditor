@@ -1872,3 +1872,115 @@ migrations; `d_test` is added to its `PROTECTED` list and the target is now
 
 Verified here: `ruff check .` all checks passed; `pytest tests -p no:warnings`
 → **461 passed, 56 skipped**; `bash -n` clean.
+
+---
+
+## 2026-11-05 — M3B Part 2, step 1: D-1 Option A implemented (revision 0003)
+
+The approved Phase 3 section 10.2 structure is restored. `disclosure_snapshot`
+is one row per **collection event** again, and `audit_run` references one
+snapshot instead of two. `0001_baseline_schema.py` and `0002_pattern_ops` are
+untouched.
+
+| Was | Now |
+|---|---|
+| `source_type`, `source_url` NOT NULL | `source_url_listing`, `source_url_policy`, both nullable |
+| `retrieved_at` / `retrieval_method` | `collected_at` / `retrieval_mode` |
+| `storage_path`, `content_sha256` NOT NULL | `policy_doc_path`, `policy_doc_sha256` **nullable** |
+| `content_bytes`, `http_status` | `policy_doc_bytes`, `policy_http_status` |
+| — | `status` NOT NULL, `declares_no_data_collected` nullable |
+| 7 FKs on `audit_run` | **6** — DOC-1 resolved |
+| 28 CHECKs | **32** — six new ones hold a partial event together |
+
+### The two decisions worth defending
+
+**Partial events are the normal case, so the schema says so.** Both URLs are
+nullable and `status` records the outcome. Six CHECKs stop a partial event
+looking complete: the status vocabulary, the nullable hash length, the
+path/hash pairing, at-least-one-source, a stored document implying its URL, and
+two status-to-URL agreements. `complete` cannot be recorded without both URLs —
+that is a constraint, not a convention.
+
+**`declares_no_data_collected` is three-state.** NULL = the section was never
+read. False = read, carries no app-level no-collection statement. True = read,
+carries it. Collapsing NULL into False would turn a retrieval failure into an
+explicit negative declaration, which is the one thing the column exists to
+prevent. It is a nullable addition to the approved column list, recorded in the
+requirement change log rather than applied silently.
+
+`SecurityPractices` still has no column and none was added. It stays in the
+filesystem corpus record and takes no part in verdicts.
+
+### The revision refuses to restructure a populated table
+
+Two per-source rows cannot be merged into one collection event: nothing in the
+old structure records which declaration row belongs with which policy row, and
+an application may have many snapshots of each source. A wrong guess would
+attribute one application's policy to the wrong event. `upgrade()` counts rows
+in `disclosure_snapshot` and `audit_run` and stops with the recovery named —
+re-import from the filesystem corpus, which holds per-source provenance in
+full. Every project database is empty, so this costs nothing and removes a
+class of silent corruption.
+
+Offline mode has no connection to count against, so the guard emits a comment
+into the generated script rather than appearing to have checked. Found by
+running `alembic upgrade --sql`, which crashed on `bind.execute(...)` returning
+None.
+
+### Batch ordering, learned the hard way
+
+The first version failed with `KeyError: 'policy_doc_sha256'`. A batch
+operation is planned against the table as **reflected when the batch opens**,
+so a rename inside a batch is invisible to a later operation in the same batch.
+The revision is now four sequential passes — drop, rename, add, constrain — with
+a comment saying why, and the downgrade mirrors it.
+
+### Tests changed, none weakened
+
+- `test_audit_run_has_seven_not_null_foreign_keys` → `..._six_...`, and it now
+  asserts the exact **set** of six as well as the count.
+- `test_audit_cannot_compare_a_snapshot_with_itself` →
+  `test_an_audit_references_exactly_one_collection_event`. The old CHECK has no
+  subject under Option A: an audit cannot compare a snapshot with itself when
+  there is only one. The invariant moved from a constraint that could be
+  dropped into a structure where the error cannot be expressed, and the
+  structure is what is asserted.
+- `test_snapshot_source_type_is_restricted` →
+  `test_snapshot_status_is_restricted`: the same closed-vocabulary assertion,
+  on the column that now carries one.
+- Seven new constraint tests, including the three-state flag.
+- `test_collection_event_migration.py`: 10 tests covering the chain, the
+  upgrade, the column set against the models, the downgrade, a
+  downgrade/upgrade round trip, that `status` keeps no server default, and the
+  populated-table refusal with its message.
+
+**Model-to-migration equivalence now compares against the whole chain.**
+`migrated_engine` applies 0001 → 0002 → 0003; a new `baseline_engine` serves
+the tests that genuinely mean the frozen record. Comparing current models to
+0001 alone would fail for a correct schema — the same category error as C-56,
+and it would have recurred at every future migration.
+
+Integration tests whose fixture needs the collection-event schema now **skip**
+when the database is at a pre-0003 revision, rather than failing. The downgrade
+stage of the verification script depends on that distinction.
+
+### Renamed
+
+`scripts/verify_c53.sh` → `scripts/verify_migrations.sh` via `git mv`, since it
+verifies the whole revision chain rather than C-53 alone. Six earlier
+disposable databases remain in `PROTECTED`; the next target is
+`privacy_auditor_m3b_20261105_test`.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| Migration up and down on SQLite | both clean; downgrade restores the exact prior column set |
+| Offline PostgreSQL DDL | correct, including `ALTER COLUMN policy_doc_sha256 DROP NOT NULL` and all seven CHECKs |
+| New migration tests | 10 passed |
+| `tests/unit/test_schema.py` | 60 passed |
+| Full suite | **477 passed, 56 skipped** |
+| `ruff check .` | All checks passed |
+
+**Not verified:** anything on PostgreSQL. F-02 and F-04 to F-07 are not
+implemented yet — this step restored the schema they need.

@@ -365,7 +365,7 @@ def test_timestamps_carry_a_time_zone(pg_engine):
     """A naive timestamp would make retrieval times ambiguous across the
     team's machines."""
     assert _udt_name(pg_engine, "audit_run", "requested_at") == "timestamptz"
-    assert _udt_name(pg_engine, "disclosure_snapshot", "retrieved_at") == "timestamptz"
+    assert _udt_name(pg_engine, "disclosure_snapshot", "collected_at") == "timestamptz"
 
 
 def test_verdict_confidence_is_numeric(pg_engine):
@@ -502,6 +502,16 @@ def test_audit_run_foreign_keys_are_all_not_null(pg_engine):
 
 
 def _seed(session: Session) -> dict:
+    """A minimal valid graph for the constraint tests.
+
+    **Skips when the database is behind revision 0003_collection_event.** The
+    graph is built from the current models, which describe the restored
+    collection-event snapshot (D-1 Option A); at an earlier revision
+    ``disclosure_snapshot`` still has the per-source columns and this insert
+    would fail. A skip is the honest outcome there: the test is not applicable
+    to that schema, as against a defect in it. The downgrade stage of
+    scripts/verify_migrations.sh relies on this.
+    """
     from app.db.models import (
         Application,
         AuditRun,
@@ -510,6 +520,18 @@ def _seed(session: Session) -> dict:
         TaxonomyMappingVersion,
     )
 
+    present = {
+        column["name"]
+        for column in inspect(session.get_bind()).get_columns("disclosure_snapshot")
+    }
+    missing = {"status", "source_url_listing", "source_url_policy"} - present
+    if missing:
+        pytest.skip(
+            "disclosure_snapshot is at a pre-0003 revision (missing "
+            f"{sorted(missing)}), so the collection-event graph these tests "
+            "need cannot be built. Apply 0003_collection_event."
+        )
+
     suffix = os.urandom(4).hex()
     app = Application(
         package_name=f"com.test.{suffix}", app_name="Integration Test App"
@@ -517,19 +539,16 @@ def _seed(session: Session) -> dict:
     session.add(app)
     session.flush()
 
-    ds = DisclosureSnapshot(
+    # One collection event covering both sources, per D-1 Option A.
+    snapshot = DisclosureSnapshot(
         app_id=app.app_id,
-        source_type="data_safety",
-        source_url="https://example.invalid/listing",
-        retrieval_method="test",
-        content_sha256="a" * 64,
-    )
-    policy = DisclosureSnapshot(
-        app_id=app.app_id,
-        source_type="privacy_policy",
-        source_url="https://example.invalid/privacy",
-        retrieval_method="test",
-        content_sha256="b" * 64,
+        source_url_listing="https://example.invalid/listing",
+        source_url_policy="https://example.invalid/privacy",
+        retrieval_mode="test",
+        policy_doc_path=f"data/policies/raw/{suffix}.html",
+        policy_doc_sha256="b" * 64,
+        status="complete",
+        declares_no_data_collected=False,
     )
     mapping = TaxonomyMappingVersion(version_label=f"test-{suffix}")
     models = [
@@ -541,13 +560,12 @@ def _seed(session: Session) -> dict:
         )
         for task in ("classification", "span_extraction", "alignment")
     ]
-    session.add_all([ds, policy, mapping, *models])
+    session.add_all([snapshot, mapping, *models])
     session.flush()
 
     audit = AuditRun(
         app_id=app.app_id,
-        ds_snapshot_id=ds.snapshot_id,
-        policy_snapshot_id=policy.snapshot_id,
+        snapshot_id=snapshot.snapshot_id,
         taxonomy_mapping_version_id=mapping.taxonomy_mapping_version_id,
         classification_model_id=models[0].model_version_id,
         span_model_id=models[1].model_version_id,

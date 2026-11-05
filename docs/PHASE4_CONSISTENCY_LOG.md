@@ -1265,3 +1265,82 @@ the test suite and passed in stage 9. The script is a convenience
 pretty-printer; its output was never the evidence.
 
 **Status:** resolved.
+
+### C-59 D-1 Option A implemented: the collection-event snapshot restored
+
+**Approved design:** Phase 3 section 10.2 — one `disclosure_snapshot` row per
+**collection event**, carrying both disclosure sources.
+
+**What happened:** the implementation had deviated to one row per source,
+discriminated by `source_type`, with `audit_run` carrying two snapshot foreign
+keys. The team ruled Option A on 2026-11-05 and revision
+`0003_collection_event` brings the implementation back to the approved design.
+`0001_baseline_schema.py` and `0002_pattern_ops` are unmodified.
+
+| Was | Now |
+|---|---|
+| `source_type`, `source_url` | `source_url_listing`, `source_url_policy`, both nullable |
+| `retrieved_at` | `collected_at` |
+| `retrieval_method` | `retrieval_mode` |
+| `storage_path`, `content_sha256` NOT NULL | `policy_doc_path`, `policy_doc_sha256` **nullable** |
+| `content_bytes`, `http_status` | `policy_doc_bytes`, `policy_http_status` |
+| — | `status` NOT NULL, `declares_no_data_collected` nullable |
+| `audit_run`: 2 snapshot FKs, 7 total | **1 snapshot FK, 6 total** |
+| 2 snapshot CHECKs, 28 total | **7 snapshot CHECKs, 32 total** |
+
+**DOC-1 resolves.** `audit_run` has six NOT NULL foreign keys, so section
+10.3's "seven" was the error; section 10.2 stands as approved.
+
+**E-2 satisfied.** `status` exists, with the closed value set in
+`analysis.vocabulary.SNAPSHOT_STATUSES`, recorded in the requirement change
+log because Phase 3 names the column without enumerating its values.
+
+**Partial collection events are the point.** Phase 1 named scraper breakage the
+highest-probability risk, so an event capturing one source and failing the
+other is expected. Both URLs are nullable, and six CHECK constraints stop a
+partial event from looking complete: the status vocabulary, the nullable hash
+length, the path/hash pairing, at-least-one-source, a stored document implying
+its URL, and two status-to-URL agreements. A status of `complete` cannot be
+recorded without both URLs.
+
+**`declares_no_data_collected` is three-state, deliberately.** NULL means the
+Data Safety section was never read; False means it was read and carries no
+app-level no-collection statement; True means it does. Collapsing NULL into
+False would turn a retrieval failure into an explicit negative declaration,
+which is the single thing the column exists to prevent. Asserted by
+`test_declares_no_data_collected_is_three_state`.
+
+**What Option A gives up, recorded rather than hidden.** One event has one
+timestamp, one hash, one HTTP status and one byte count. Per-source values
+stop at the database boundary and survive in the filesystem corpus record's
+provenance, which M3A writes. `SecurityPractices` still has no column and none
+was added.
+
+**The revision refuses to run on a populated table.** Two per-source rows
+cannot be merged into one event: nothing in the old structure records which
+declaration row belongs with which policy row, and a wrong guess would
+attribute one application's policy to the wrong event. `upgrade()` stops with
+the recovery path named — re-import from the filesystem corpus. Asserted by
+`test_upgrade_refuses_to_restructure_a_populated_table`, which inserts a row
+and requires the refusal.
+
+**Tests changed, none weakened.** `test_audit_run_has_seven_not_null_foreign_keys`
+became `..._six_...` and now asserts the exact set of six as well as the count.
+`test_audit_cannot_compare_a_snapshot_with_itself` became
+`test_an_audit_references_exactly_one_collection_event`: the old CHECK has no
+subject under Option A, so the invariant moved from a constraint that could be
+dropped into a structure where the error cannot be expressed, and that
+structure is what is now asserted. `test_snapshot_source_type_is_restricted`
+became `test_snapshot_status_is_restricted`, the same closed-vocabulary
+assertion on the column that now carries one. Seven new constraint tests were
+added.
+
+Model-to-migration equivalence now compares the models against the **whole
+chain** rather than the baseline alone, in `migrated_engine`; a `baseline_engine`
+fixture remains for the tests that genuinely mean the frozen record. Comparing
+current models to 0001 only would fail for a correct schema — the same category
+error as C-56.
+
+**Status:** implemented and SQLite-verified. **PostgreSQL verification
+outstanding**, by `scripts/verify_migrations.sh` (renamed from
+`verify_c53.sh`, since it now verifies the whole chain).

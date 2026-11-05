@@ -51,5 +51,6 @@ Thumbs.db
 tmp/
 .DS_Store
 
-# C-53 verification logs, produced by scripts/verify_c53.sh
+# Migration verification logs, produced by scripts/verify_migrations.sh
 c53_verification_*.log
+migration_verification_*.log

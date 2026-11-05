@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 #
-# C-53 verification, end to end, on this machine.
+# Migration verification, end to end, on this machine.
 #
-# Implements docs/C53_VERIFICATION_PROCEDURE.md as one run. Everything it does
-# is either a read or a single CREATE DATABASE on a new, uniquely named
-# database.
+# Grew out of C-53's verification (docs/C53_VERIFICATION_PROCEDURE.md) and now
+# verifies the whole revision chain: it upgrades a fresh disposable database to
+# head, runs the integration suite against it, downgrades to the baseline,
+# re-runs to prove the revision-gated tests start skipping, and re-upgrades.
+# Everything it does is either a read or a single CREATE DATABASE on a new,
+# uniquely named database.
 #
-#   bash scripts/verify_c53.sh
+#   bash scripts/verify_migrations.sh
 #
 # Safety, enforced rather than documented:
 #   * The three protected databases - privacy_auditor, privacy_auditor_test,
@@ -30,9 +33,9 @@
 
 set -euo pipefail
 
-# C-53 is closed: verified on 2026-11-05 against privacy_auditor_c53_20261105d_test.
-# This script is kept as the template for verifying any future migration.
-DISPOSABLE_DB="privacy_auditor_c53_20261105e_test"
+# C-53 was verified on 2026-11-05 against privacy_auditor_c53_20261105d_test.
+# This run verifies the chain including 0003_collection_event (D-1 Option A).
+DISPOSABLE_DB="privacy_auditor_m3b_20261105_test"
 # Never a target. The first three are the project's own databases. The three
 # c53 databases are earlier verification runs the team asked to keep, so this
 # script must neither reuse nor disturb them:
@@ -43,11 +46,13 @@ DISPOSABLE_DB="privacy_auditor_c53_20261105e_test"
 PROTECTED=("privacy_auditor" "privacy_auditor_test" "privacy_auditor_frozen_20261105_test"
            "privacy_auditor_c53_20261105_test" "privacy_auditor_c53_20261105b_test"
            "privacy_auditor_c53_20261105c_test" "privacy_auditor_c53_20261105d_test")
+# Every earlier disposable database is listed above so none can be reused. Add
+# the current one here and move DISPOSABLE_DB on before the next run.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-LOG="$ROOT/c53_verification_$(date +%Y%m%d_%H%M%S).log"
+LOG="$ROOT/migration_verification_$(date +%Y%m%d_%H%M%S).log"
 exec > >(tee "$LOG") 2>&1
 
 PY="$ROOT/.venv/bin/python"
@@ -56,7 +61,7 @@ step()  { printf '\n==== %s\n' "$*"; }
 ok()    { printf '  ok: %s\n' "$*"; }
 fail()  { printf '\nFAILED: %s\n' "$*" >&2; printf 'Log: %s\n' "$LOG" >&2; exit 1; }
 
-printf 'C-53 verification\nrepository: %s\nstarted: %s\nlog: %s\n' \
+printf 'Migration verification\nrepository: %s\nstarted: %s\nlog: %s\n' \
   "$ROOT" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$LOG"
 
 # --- 0. Guards ------------------------------------------------------------
@@ -187,14 +192,14 @@ pg postgres -c "SELECT datname, datcollate, datctype FROM pg_database
   || fail "could not read the collation"
 
 # --- 9. Integration tests, revision applied -------------------------------
-step "9. Integration tests against the disposable database (56 expected)"
+step "9. Integration tests against the disposable database"
 TEST_DATABASE_URL="$("$PY" scripts/test_database_url.py "$DISPOSABLE_DB")" \
   || fail "could not compose TEST_DATABASE_URL"
 export TEST_DATABASE_URL
 
 "$PY" -m pytest tests/integration -p no:warnings -v \
   || fail "integration tests failed with 0002_pattern_ops applied"
-ok "integration tests passed (expected 56 passed, 0 skipped)"
+ok "integration tests passed with the full chain applied (0 skips expected)"
 
 # --- 10. Downgrade --------------------------------------------------------
 step "10. Downgrade to the baseline, then re-check"
@@ -220,7 +225,7 @@ ok "both baseline indexes retained"
 step "10b. Integration tests with the revision removed - the gate must fire"
 "$PY" -m pytest tests/integration -p no:warnings \
   || fail "integration tests failed at the baseline"
-ok "passed with skips (expected 49 passed, 7 skipped)"
+ok "passed with skips at the baseline (7 revision-gated + 7 collection-event tests skip)"
 
 step "10c. Re-apply the revision"
 ( cd backend && POSTGRES_DB="$DISPOSABLE_DB" ../.venv/bin/alembic upgrade head ) \
@@ -228,7 +233,7 @@ step "10c. Re-apply the revision"
 ok "back at 0002_pattern_ops"
 
 # --- 11. Search diagnostic ------------------------------------------------
-step "11. C-53 search diagnostic"
+step "11. ALG-11 search diagnostic"
 "$PY" scripts/explain_application_search.py || fail "the diagnostic failed"
 
 # --- 12. Done -------------------------------------------------------------
@@ -238,8 +243,10 @@ Every automated check passed. Read these from the output above and report them:
 
   * step 7  - the four functional indexes and their operator classes
   * step 8  - datcollate, which is still unrecorded in the note
-  * step 9  - the pytest summary line (expected: 56 passed, 0 skipped)
-  * step 10 - the downgrade, and the second summary (expected: 49 passed, 7 skipped)
+  * step 9  - the pytest summary line (0 skips expected)
+  * step 10 - the downgrade, and the second summary (more skips are expected
+              there: the revision-gated tests AND the tests whose fixture needs
+              the collection-event schema)
   * step 11 - whether the two prefix LIKE rows now report "index used: yes"
 
 enable_seqscan is off in step 11, which establishes index ELIGIBILITY only.

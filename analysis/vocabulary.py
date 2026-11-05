@@ -120,6 +120,62 @@ SOURCE_PRIVACY_POLICY: Final = "privacy_policy"
 SOURCE_TYPES: Final[tuple[str, ...]] = (SOURCE_DATA_SAFETY, SOURCE_PRIVACY_POLICY)
 
 # ---------------------------------------------------------------------------
+# Collection-event outcome — disclosure_snapshot.status (E-2)
+# ---------------------------------------------------------------------------
+#
+# D-1 was ruled Option A on 2026-11-05: one snapshot row per **collection
+# event**, covering both disclosure sources, as approved in Phase 3 section
+# 10.2. A single event can therefore be partially successful, and Phase 1 named
+# scraper breakage the project's highest-probability risk, so partial events
+# are expected rather than exceptional.
+#
+# This column is what keeps them honest. A failed or absent source must never
+# read downstream as "the application declares nothing", so the outcome is
+# recorded explicitly instead of being inferred from a missing row.
+#
+# The value set is the project's own, required by the restored design. It is
+# recorded in docs/REQUIREMENT_CHANGE_LOG.md because Phase 3 names the column
+# without enumerating its values.
+
+#: Both sources captured.
+SNAPSHOT_COMPLETE: Final = "complete"
+#: The Data Safety section was captured; the privacy policy was not.
+SNAPSHOT_DECLARATION_ONLY: Final = "declaration_only"
+#: The privacy policy was captured; the Data Safety section was not.
+SNAPSHOT_POLICY_ONLY: Final = "policy_only"
+#: The listing was retrieved and carries **no** Data Safety section. This is a
+#: fact about the application, not a failure, and is deliberately distinct from
+#: ``fetch_failed``.
+SNAPSHOT_DECLARATION_ABSENT: Final = "declaration_absent"
+#: Neither source could be retrieved.
+SNAPSHOT_FETCH_FAILED: Final = "fetch_failed"
+#: Something was retrieved but could not be understood. The remedy differs from
+#: a fetch failure: the adapter needs updating.
+SNAPSHOT_PARSE_FAILED: Final = "parse_failed"
+
+SNAPSHOT_STATUSES: Final[tuple[str, ...]] = (
+    SNAPSHOT_COMPLETE,
+    SNAPSHOT_DECLARATION_ONLY,
+    SNAPSHOT_POLICY_ONLY,
+    SNAPSHOT_DECLARATION_ABSENT,
+    SNAPSHOT_FETCH_FAILED,
+    SNAPSHOT_PARSE_FAILED,
+)
+
+#: Statuses in which a Data Safety declaration is available to audit.
+SNAPSHOT_HAS_DECLARATION: Final[frozenset[str]] = frozenset(
+    {SNAPSHOT_COMPLETE, SNAPSHOT_DECLARATION_ONLY}
+)
+#: Statuses in which a privacy policy document is available to audit.
+SNAPSHOT_HAS_POLICY: Final[frozenset[str]] = frozenset(
+    {SNAPSHOT_COMPLETE, SNAPSHOT_POLICY_ONLY}
+)
+#: Statuses from which a full cross-source audit can run. Anything else leaves
+#: one side of the comparison missing, which F-10 and ALG-8 must treat as
+#: undetermined rather than as agreement.
+SNAPSHOT_AUDITABLE: Final[frozenset[str]] = frozenset({SNAPSHOT_COMPLETE})
+
+# ---------------------------------------------------------------------------
 # Learning tasks — model_version.task
 # ---------------------------------------------------------------------------
 

@@ -126,3 +126,36 @@ Two consequences recorded here because they touch approved documents:
 
 Still not represented by any approved column, and **not** being added without
 approval: `SecurityPractices`. See `docs/M3B_IMPLEMENTATION_PLAN.md` §7.
+
+---
+
+## Snapshot status vocabulary and the app-level no-collection flag
+
+Date: 2026-11-05, with revision `0003_collection_event`.
+
+**1. `disclosure_snapshot.status` values.** Phase 3 names the column (E-2) and
+does not enumerate its values, so the set is the project's own:
+
+`complete` · `declaration_only` · `policy_only` · `declaration_absent` ·
+`fetch_failed` · `parse_failed`
+
+`declaration_absent` is deliberately distinct from `fetch_failed`: a listing
+that carries no Data Safety section is a fact about the application, while a
+failed fetch is a fact about one moment. Treating them alike would let a
+network problem read as an application declaring nothing.
+
+**2. `disclosure_snapshot.declares_no_data_collected`** — a **nullable**
+Boolean, added to implement the team's instruction to distinguish an explicit
+app-level "this app doesn't collect or share any user data" declaration from an
+absent data category. Three states: NULL (section not read), False (read, no
+such statement), True (read, statement present).
+
+This is an addition to the approved column list, not a change to any approved
+requirement, and it is additive and nullable. It is recorded here rather than
+applied silently. If the faculty would rather this be encoded in `status`, the
+change is one migration and the vocabulary above gains a value.
+
+**Still not represented, and not added:** `SecurityPractices` — encryption in
+transit, deletion availability, independent security review. M3A parses it and
+the filesystem corpus record retains it. No approved column holds it, it is not
+required by FR-01 to FR-07, and it takes no part in verdict calculation.
