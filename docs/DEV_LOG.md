@@ -2388,3 +2388,59 @@ evidence worth having that a regression test works.
 **551 passed, 72 skipped**; ruff clean. Next disposable database:
 `privacy_auditor_m3b_20261106b_test`; the failed run's database is preserved
 and protected — twelve guarded names.
+
+---
+
+## 2026-11-06 — M3B COMPLETE, verified on PostgreSQL 16
+
+`privacy_auditor_m3b_20261106b_test`, log
+`migration_verification_20261106_002608.log`.
+
+**72 passed, 0 skipped at head.** Downgrade: 37 passed, 35 skipped, 0 failed.
+Re-upgrade restored the revision, the operator classes and the
+collection-event columns. The C-64 fix held.
+
+The 72 include the 16 M3B Part 2 tests: persistence, the three states of
+`declares_no_data_collected` through a real boolean column, JSONB threshold
+round-trip, duplicate handling, supersession, hash re-verification, partial
+events, and PostgreSQL itself rejecting an out-of-vocabulary status and a
+`complete` status without both URLs.
+
+### C-65 — the diagnostic underneath a passing run was lying, both ways
+
+Worth catching even though the suite passed.
+
+`lower(package_name) LIKE 'wha%'` produced an **Index Only Scan** with a
+Filter and no Index Cond, and the script printed `index used: NO (sequential
+scan)`. Wrong twice: an index *was* used, and there was no sequential scan.
+The substring test looked for `"Index Scan"`, which `"Index Only Scan"` does
+not contain.
+
+The combined F-01 query produced an `Incremental Sort` over an `Index Scan`
+with a **Filter only** and printed `index used: yes` — the C-53 symptom
+reported as a pass.
+
+Fixed to key on **Index Cond**, which is what "the index is narrowing the
+scan" means, and to print the scan nodes alongside.
+
+**The real lesson is about empty tables.** The previous run produced a
+`BitmapOr` over both pattern indexes; this one produced an `Incremental Sort`.
+Nothing changed but the database. On an empty relation every path costs about
+the same, so the plan is neither stable nor meaningful, and a `NO` from this
+script proves nothing. The script now says so, and points at the two
+eligibility tests — which seed rows in a rolled-back transaction, assert on
+the plan, and passed here.
+
+C-53's conclusion is untouched: operator classes confirmed in `pg_opclass`,
+eligibility asserted by passing tests.
+
+### M3B complete
+
+F-01 to F-07 implemented, traceable and PostgreSQL-verified. Offline corpus
+import works. Optional live retrieval integrated offline-first.
+
+**What is still not true, and this verification does not make true:** zero
+Android applications collected; live retrieval has never reached Google; no
+Data Safety parser exists, so a real live collection today yields a partial
+event; `SecurityPractices` has no column; no end-to-end audit has run — F-02
+queues, and nothing consumes the queue until M8.

@@ -5,24 +5,28 @@ Scope: F-01 to F-07, requirements FR-01 to FR-07, task T1.
 
 ## 0. Status at a glance
 
-### Completion report — 2026-11-06
+### Completion report — 2026-11-06 · **M3B COMPLETE**
+
+**Verified on PostgreSQL 16** (C-66, log
+`migration_verification_20261106_002608.log`): 72 integration tests passed
+with **0 skips** at head `0003_collection_event`; 37 passed / 35 skipped /
+0 failed at the baseline with the guards firing; downgrade and re-upgrade
+clean.
 
 | Function | Module | Status |
 |---|---|---|
 | F-01 search | `application_repo.search` | **Tested and verified** (PostgreSQL) |
-| F-02 requestAudit | `services/audit_service.py` | Implemented; PostgreSQL integration tests written |
+| F-02 requestAudit | `services/audit_service.py` | **Tested and verified** (PostgreSQL) |
 | F-03 unknown application | `application_repo.handle_unknown_application` | **Tested and verified** (PostgreSQL) |
-| F-04 loadDeclaration | `snapshot_repo.load_declaration` | Implemented; PostgreSQL integration tests written |
-| F-05 loadPolicyDocument | `snapshot_repo.load_policy_document` | Implemented; PostgreSQL integration tests written |
-| F-06 live retrieval | `services/acquisition_service.py` | Implemented, **never run against a live source** |
-| F-07 provenance persistence | `snapshot_repo.record_collection_event` | Implemented; PostgreSQL integration tests written |
+| F-04 loadDeclaration | `snapshot_repo.load_declaration` | **Tested and verified** (PostgreSQL) |
+| F-05 loadPolicyDocument | `snapshot_repo.load_policy_document` | **Tested and verified** (PostgreSQL) |
+| F-06 live retrieval | `services/acquisition_service.py` | **Tested and verified** against controlled fixtures on PostgreSQL; **never run against a live source** |
+| F-07 provenance persistence | `snapshot_repo.record_collection_event` | **Tested and verified** (PostgreSQL) |
 | Offline corpus import | `scripts/import_corpus.py` | Implemented; **corpus is empty** |
 | D-1 Option A schema | `0003_collection_event` | **Tested and verified** on PostgreSQL 16 (C-63) |
 
-Suite: **546 passed, 72 skipped** on SQLite. The 72 skips are the
-PostgreSQL-only tests. 56 of those passed against PostgreSQL 16 on 2026-11-06;
-**the 16 new M3B Part 2 integration tests have not been run against a server
-yet** — one command, below.
+Suite: **551 passed, 72 skipped** on SQLite, where the 72 skips are the
+PostgreSQL-only tests. **All 72 passed against PostgreSQL 16** on 2026-11-06.
 
 **Remaining limitations, stated rather than buried:**
 

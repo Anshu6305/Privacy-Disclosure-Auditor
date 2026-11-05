@@ -1529,3 +1529,69 @@ suite had been green with the bug present, which is why the coverage was
 missing in the first place.
 
 **Status:** resolved.
+
+### C-65 The diagnostic's "index used" verdict was wrong in both directions
+
+**Found by:** the successful M3B verification run, 2026-11-06. The suite passed
+72 of 72, and the diagnostic beneath it printed two misleading lines.
+
+`lower(package_name) LIKE 'wha%'` produced an **Index Only Scan** using
+`uq_application_package_name` with a Filter and no Index Cond. The script
+reported `index used: NO (sequential scan)` — wrong twice over: an index was
+being used, and no sequential scan was in the plan. The substring test looked
+for `"Index Scan"`, which `"Index Only Scan"` does not contain.
+
+The combined F-01 query produced an `Incremental Sort` over an `Index Scan`
+with a **Filter only** and reported `index used: yes` — which is exactly the
+C-53 symptom being reported as a pass.
+
+**Fix:** the verdict now keys on the presence of an **Index Cond**, which is
+what "the index is narrowing the scan" actually means, and the scan nodes are
+printed alongside it. A plan with an index but no Index Cond now says so
+explicitly.
+
+**The deeper point, now stated in the script.** On an **empty** table the
+chosen plan is neither stable nor meaningful — every path costs about the
+same, so the planner may pick a different index, or the same index as a
+filter, from one run to the next. The previous run produced a `BitmapOr` over
+both pattern indexes; this one produced an `Incremental Sort`. Nothing
+changed between them except the database.
+
+So a `NO` from this script on an empty table is not evidence of anything. The
+authoritative evidence is `test_prefix_predicate_is_index_eligible` and
+`test_combined_f01_query_is_index_eligible`, which seed rows inside a
+rolled-back transaction and assert on the plan — and both passed in this run.
+
+C-53's conclusion is unaffected: the operator classes are confirmed in
+`pg_opclass`, and the eligibility tests pass.
+
+**Status:** resolved.
+
+### C-66 M3B complete — verified on PostgreSQL 16
+
+Log `migration_verification_20261106_002608.log`, database
+`privacy_auditor_m3b_20261106b_test`, 2026-11-06.
+
+| Stage | Result |
+|---|---|
+| Upgrade to head | `0003_collection_event` |
+| Operator classes | both `_pattern` `text_pattern_ops`, both originals `text_ops` |
+| Integration tests at head | **72 passed, 0 skipped** |
+| Downgrade | pattern indexes removed, baseline pair retained |
+| Integration tests at baseline | **37 passed, 35 skipped, 0 failed** |
+| Re-upgrade | head, operator classes and collection-event columns restored |
+
+The 72 include the 16 M3B Part 2 tests covering F-02, F-04, F-05, F-06 and
+F-07: persistence, the three states of `declares_no_data_collected` through a
+real boolean column, JSONB threshold round-trip, duplicate handling,
+supersession, hash re-verification, partial events, and PostgreSQL rejecting
+both an out-of-vocabulary status and a `complete` status without both URLs.
+
+**M3B is complete.** F-01 to F-07 implemented, traceable and
+PostgreSQL-verified; offline corpus import working; optional live retrieval
+integrated offline-first.
+
+**Limitations that remain true and are not hidden by this verification:**
+zero Android applications collected, live retrieval has never reached Google,
+no Data Safety parser exists, `SecurityPractices` has no column, and no
+end-to-end audit has run.

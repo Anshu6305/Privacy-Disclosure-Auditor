@@ -173,15 +173,47 @@ def main() -> int:
             ).scalars().all()
             for line in plan:
                 print(f"  {line}")
-            used = any("Index Scan" in line or "Bitmap Index" in line for line in plan)
-            print(f"  => index used: {'yes' if used else 'NO (sequential scan)'}")
+            # Keyed on Index Cond, not on the scan node's name.
+            #
+            # Two reasons. "Index Only Scan" does not contain the substring
+            # "Index Scan", so the previous check reported NO for a plan that
+            # was using an index. And a scan carrying only a Filter is doing
+            # no index *selection* at all - which is precisely the C-53
+            # symptom, so calling it "used" would restate the bug as a pass.
+            index_condition = any("Index Cond" in line for line in plan)
+            scans = [
+                line.strip()
+                for line in plan
+                if "Index Scan" in line or "Index Only Scan" in line
+                or "Bitmap Index" in line or "Seq Scan" in line
+            ]
+            print(f"  => selective index condition: {'yes' if index_condition else 'NO'}")
+            if scans:
+                print(f"     nodes: {' | '.join(scans)}")
+            if scans and not index_condition:
+                print(
+                    "     (an index appears but only as a Filter, so it is "
+                    "not narrowing the scan)"
+                )
 
         print(
             "\nReading this output:\n"
-            "  Before 0002_pattern_ops is applied, the two LIKE queries report "
-            "NO and the range query reports yes. That is C-53.\n"
-            "  After it is applied, the LIKE queries should report yes with an "
-            "Index Cond using ~>=~ on a *_pattern index.\n"
+            "  Before 0002_pattern_ops is applied, the LIKE queries report NO "
+            "and the range query reports yes. That is C-53.\n"
+            "  After it is applied, a LIKE query CAN use a *_pattern index "
+            "with an Index Cond using ~>=~.\n"
+            "\n"
+            "  On an EMPTY table the plan the planner happens to choose is "
+            "not stable and not meaningful: every path costs about the same, "
+            "so it may pick a different index, or the same index as a filter "
+            "only, from one run to the next. A 'NO' here is not evidence that "
+            "the correction failed.\n"
+            "\n"
+            "  The authoritative evidence is the two integration tests, which "
+            "seed rows in a rolled-back transaction and assert on the plan:\n"
+            "    test_prefix_predicate_is_index_eligible\n"
+            "    test_combined_f01_query_is_index_eligible\n"
+            "\n"
             "  The planner will still prefer a sequential scan at 300-500 rows "
             "when enable_seqscan is left on. That is correct, and no "
             "performance claim should be made from this script."
