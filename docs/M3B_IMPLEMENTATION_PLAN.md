@@ -1,10 +1,25 @@
 # Milestone 3B — Database-backed Acquisition: implementation plan
 
-Date: 2026-11-05
-Status: **plan only.** No model, migration, database or application code was
-changed in producing it.
-Blocked on: the **D-1** faculty decision.
+Date: 2026-11-05 · revised 2026-11-05 after M3B part 1
 Scope: F-01 to F-07, requirements FR-01 to FR-07, task T1.
+
+## 0. Status at a glance
+
+| State | Items |
+|---|---|
+| **Completed** | F-01 `searchApplications`, F-03 `handleUnknownApplication`, `ApplicationRepository`. Commit `fc1a111`. 43 unit tests |
+| **Verified** | **43 PostgreSQL integration tests passed** on `privacy_auditor_frozen_20261105_test`, 2026-11-05 — 29 schema + 14 F-01 search. Results are correct on real PostgreSQL, not only on SQLite |
+| **Pending** | F-02 `requestAudit`, F-04 `loadDeclaration`, F-05 `loadPolicyDocument`, F-06 `fetchLiveDisclosure` persistence, F-07 `recordProvenance` persistence, the corpus import command |
+| **Blocked** | All five pending functions, on the **D-1 faculty decision**. Nothing else blocks them |
+
+Two findings are open but block nothing: **C-53** (the ALG-11 functional
+indexes are inert for the prefix predicate — confirmed by diagnostic;
+resolution proposed in `docs/C53_RESOLUTION_NOTE.md`, awaiting approval) and
+**C-55** (search is prefix-only, so a substring query finds nothing).
+
+C-53 is a performance and documentation defect. The 43 passing integration
+tests establish that F-01 returns **correct** results; what the diagnostic
+disproved is the claim that it does so using the indexes.
 
 ---
 
@@ -15,7 +30,8 @@ Scope: F-01 to F-07, requirements FR-01 to FR-07, task T1.
 | M1 Repository and environment | Complete, verified on two machines |
 | M2 Database schema | Complete; 16 tables verified on PostgreSQL 16 |
 | M3A Acquisition layer | Complete; **never run live**, no application collected |
-| M3B Acquisition persistence | **This plan.** Blocked on D-1 |
+| M3B part 1 (F-01, F-03, repository) | **Complete and PostgreSQL-verified**, commit `fc1a111` |
+| M3B part 2 (F-02, F-04 to F-07) | **Blocked on D-1** |
 | M4 Text processing | Complete; fixtures only |
 | M5 Baseline classifier | Complete; test macro-F1 0.7489 |
 | M6 Improved models | Not started; blocked on labelled alignment pairs |
@@ -110,9 +126,9 @@ The mapping differs between the two options and is set out in §5 and §6.
 
 | Function | Requirement | What is missing | Depends on D-1 |
 |---|---|---|---|
-| **F-01** searchApplications | FR-01 | `application_repo`, ALG-11 prefix search over the functional `lower()` indexes | No |
+| ~~**F-01** searchApplications~~ | FR-01 | **Done.** `application_repo.search`, ALG-11 prefix search. Index usability is C-53 | No |
 | **F-02** requestAudit | FR-02 | Creating an `audit_run` row; needs the snapshot references | **Yes** |
-| **F-03** handleUnknownApplication | FR-03 | Insert-or-return on `application` | No |
+| ~~**F-03** handleUnknownApplication~~ | FR-03 | **Done.** `handle_unknown_application`. Reports absence; inserts nothing, because the import path needs D-1 | No |
 | **F-04** loadDeclaration | FR-04 | Reading `declared_practice` back into a `DataSafetyDeclaration` | **Yes** — which snapshot |
 | **F-05** loadPolicyDocument | FR-05 | Resolving `storage_path` from a snapshot row | **Yes** — which snapshot |
 | **F-06** fetchLiveDisclosure | FR-06 | Writing results into snapshots | **Yes** |
@@ -309,7 +325,7 @@ Once D-1 is decided.
 
 | Step | Work | Depends on D-1 |
 |---|---|---|
-| B1 | `ApplicationRepository`: insert-or-return, prefix search (F-01, F-03) | No |
+| ~~B1~~ | `ApplicationRepository`, prefix search, unknown-application report (F-01, F-03) — **complete, `fc1a111`** | No |
 | B2 | `SnapshotRepository`: write and read snapshots (F-07 persistence) | **Yes** |
 | B3 | Declaration persistence and reload (F-04) | **Yes** |
 | B4 | Policy path resolution into M3A's loader (F-05) | **Yes** |
@@ -320,8 +336,11 @@ Once D-1 is decided.
 Every repository gets an interface so the analysis layer never imports
 SQLAlchemy, preserving the separation M4, M5 and M7 rely on.
 
-Steps B1 and B3's read side could be built now. **They are not, because the
-instruction is planning only.**
+**B1 is complete.** B2 to B7 remain blocked on D-1.
+
+What B1 did *not* include, and still needs the D-1 ruling: inserting an
+application row. F-03 reports that a package is absent; it cannot add it,
+because the corpus import path writes snapshots.
 
 ---
 

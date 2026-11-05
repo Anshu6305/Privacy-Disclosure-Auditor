@@ -184,7 +184,7 @@ Milestone 1 except F-26 above.
 
 | F-id | Planned module | Milestone | Status |
 |---|---|---|---|
-| F-01 | `backend/app/db/repositories/application_repo.py` | M3B | **Implemented** — ALG-11 prefix search, 43 unit tests. **PostgreSQL verification not executed** (14 integration tests written, skipped); index usability open as C-53 |
+| F-01 | `backend/app/db/repositories/application_repo.py` | M3B | **Implemented and PostgreSQL-verified** — ALG-11 prefix search; 43 unit + 14 integration tests passed 2026-11-05. Results correct; **index usability is C-53**, confirmed inert, fix proposed |
 | F-02 | `backend/app/services/audit_service.py` | M8 | Not implemented |
 | F-03 | `backend/app/db/repositories/application_repo.py` | M3B | **Implemented** — reports absence, never raises, never permits an audit request |
 | F-04 | `acquisition/declaration.py` (normalisation, M3A); `backend/app/db/repositories/snapshot_repo.py` (loading, M3B) | M3A/M3B | **Partially implemented** — normalisation done and tested; database loading deferred pending D-1 |
@@ -226,7 +226,7 @@ presence means work has started on it.
 
 | Requirement | Function | Code | Test | Status |
 |---|---|---|---|---|
-| **FR-01** application search | F-01 | `backend/app/db/repositories/application_repo.py` | `tests/unit/test_application_repository.py` (43), `tests/integration/test_application_search_postgresql.py` (14, **not executed**) | **Implemented on SQLite; PostgreSQL unverified** |
+| **FR-01** application search | F-01 | `backend/app/db/repositories/application_repo.py` | `tests/unit/test_application_repository.py` (43), `tests/integration/test_application_search_postgresql.py` (14) | **Implemented and PostgreSQL-verified** 2026-11-05 |
 | **FR-03** unknown-application handling | F-03 | same module | same unit file | **Implemented** |
 | FR-02 audit request | F-02 | — | — | Not implemented — needs the D-1 snapshot design |
 | FR-04 to FR-07 | F-04 to F-07 | `acquisition/` | M3A tests | Partially implemented — persistence pending D-1 |

@@ -1159,3 +1159,109 @@ split, its seed and its held-out results are untouched.
 
 Also untouched: `declares_no_data_collected` and `SecurityPractices` remain
 unrepresentable, and no column was added for them.
+
+---
+
+## 2026-11-05 — C-53 confirmed on real PostgreSQL; resolution proposed
+
+Diagnostic run by the team on the Mac against
+`privacy_auditor_frozen_20261105_test`. **43 PostgreSQL integration tests
+passed** (29 schema + 14 F-01 search), so F-01 and F-03 return correct results
+on real PostgreSQL. Separately, the index diagnostic confirmed C-53.
+
+### What was measured
+
+| Predicate | Result |
+|---|---|
+| `lower(app_name) LIKE 'wha%'` | no useful index condition |
+| `lower(package_name) LIKE 'wha%'` | no useful index condition |
+| F-01 as implemented (OR over both) | Index Scan, **Filter only, no Index Cond** |
+| range: `lower(col) >= … AND < …` | real Index Cond, index used |
+
+### Why the combined plan shows an Index Scan with no Index Cond
+
+Two things, neither of them the index doing selection.
+
+**It is serving the `ORDER BY`.** `ix_application_lower_name` is ordered by
+`lower(app_name)`, the query's leading sort key, so the planner walks it in
+order, applies the `OR` as a Filter, and stops at the `LIMIT`. An ordering use
+has no Index Cond to report.
+
+**An `OR` across two columns cannot be served selectively by one index.** It
+needs two index scans combined by `BitmapOr`; a single scan can only filter.
+
+When few rows match this is worse than a sequential scan — it walks the whole
+index and fetches every heap row to evaluate `lower(package_name)`. Which is
+precisely why PostgreSQL picks a seq scan with `enable_seqscan` on.
+
+### Recommended: two `text_pattern_ops` indexes, SQL unchanged
+
+Full note in `docs/C53_RESOLUTION_NOTE.md`. The decisive property is that
+**the F-01 query does not change at all** — predicate, `lower()` on both
+sides, `escape="\\"` and `ORDER BY` all stay as committed — so the
+case-insensitive prefix semantics and the literal wildcard escaping are
+preserved by construction, not by re-testing a rewrite.
+
+### The range rewrite was rejected, on correctness
+
+It needs no migration, which made it the tempting answer. But `>=` and `<`
+compare in the **database collation**, and computing the upper bound in Python
+assumes code-point order. The two do not agree, and this project's data makes
+it concrete: package names are dot-separated, and several glibc locales give
+`.` a lower primary weight than letters, so a range on `'com.'` can order rows
+in a way a code-point successor does not predict. The failure mode is a
+**silently missing row**. For a tool whose output is "this disclosure is
+inconsistent", a search that quietly fails to find an application is worse than
+a slow one.
+
+### A trap found while preparing the proposal — verified by compiling the DDL
+
+```
+sa.Index("ix", sa.text("lower(app_name) text_pattern_ops"))
+  -> CREATE INDEX ix ON application (lower(app_name) text_pattern_ops)   correct
+
+sa.Index("ix", sa.func.lower(c.package_name),
+         postgresql_ops={"lower(package_name)": "text_pattern_ops"})
+  -> CREATE INDEX ix ON application (lower(package_name))                opclass dropped
+```
+
+No error, no warning: `postgresql_ops` keys match column names, not
+expressions. The obvious spelling produces a second useless index that looks
+right in review. The proposal therefore requires a test asserting
+`indexdef` **ends in** `text_pattern_ops` — not merely that the index exists,
+which is the mistake C-15 and the current test already made once.
+
+### Honest on the benefit
+
+**At 300 to 500 applications this buys no measurable speed, and after the
+migration PostgreSQL will very likely still choose a sequential scan**, because
+on a few pages that remains the cheaper plan. Verification must use
+`enable_seqscan = off`, and no performance improvement should be reported.
+
+What it buys: the approved **O(log N + m)** complexity claim becomes true
+rather than aspirational — today the behaviour is O(N) — and it stays true if
+the corpus grows.
+
+### Not asserted
+
+**The database collation.** The diagnostic prints it; that line was not
+included in the report, so the note records that it is *not* `C` — deduced
+soundly from the absence of an Index Cond, since a C collation yields index
+bounds even with the default opclass — and asks for the actual value rather
+than naming a locale I did not see.
+
+### Also recorded
+
+`test_functional_lower_indexes_exist` fails with the message that otherwise
+"ALG-11's case-insensitive prefix search would not use it". The diagnostic has
+disproved that: the index exists, is functional, and the search does not use
+it. The message asserts the very thing C-53 refutes and needs correcting.
+
+### Changed in this entry
+
+Documentation only. `docs/C53_RESOLUTION_NOTE.md` added; the M3B plan now
+separates Completed / Verified / Pending / Blocked; C-53's status, the tracker
+and the traceability matrix updated. **No migration, index, model, query or
+database was changed**, and no second Alembic revision was created — it is
+specified in the note and awaits approval, because moving past the frozen
+baseline for the first time is a precedent worth ruling on deliberately.

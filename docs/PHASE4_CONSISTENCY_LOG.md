@@ -1026,8 +1026,27 @@ the `LIKE` is not.
 search changes, and on a corpus of 300 to 500 applications a sequential scan is
 not noticeable. It matters for NFR performance claims, not for results.
 
-**Status:** open. Needs one command run on the team Mac, then a ruling on
-whether to add `text_pattern_ops` to the two indexes.
+**Status:** **confirmed, resolution proposed, awaiting approval.**
+
+The diagnostic was run on the team Mac on 2026-11-05 against
+`privacy_auditor_frozen_20261105_test`. Both prefix `LIKE` queries produced no
+useful index condition; the combined F-01 query produced an Index Scan with a
+Filter and no Index Cond — the index was serving the `ORDER BY`, not the
+`WHERE`; the range-based alternative produced a real Index Cond. The
+collation is therefore not `C`, and both indexes use the default `text_ops`
+opclass, which is confirmed from the frozen revision source.
+
+Recommended fix, set out in full in `docs/C53_RESOLUTION_NOTE.md`: a second
+Alembic revision adding two `text_pattern_ops` functional indexes, **retaining**
+the existing two, and **no change to the F-01 SQL** — so the case-insensitive
+prefix semantics and the literal wildcard escaping are preserved by
+construction. The range-based rewrite is **rejected**: it depends on the
+database collation and Python agreeing on string successors, and this project's
+dotted package names make a silently-missing result a real risk.
+
+Correctness was never affected, and the 43 integration tests that passed on
+2026-11-05 show F-01 returning correct results. At 300 to 500 applications the
+fix buys no measurable speed; it makes the approved O(log N + m) claim true.
 
 ### C-54 F-01 result limit and minimum query length are provisional
 
