@@ -78,7 +78,7 @@ design forbids and confirming the database refused it.
 | Segment and span offsets ordered | `ck_*_offsets_ordered` | `test_segment_offsets_must_be_ordered`, `test_span_offsets_must_be_ordered` | Implemented and verified |
 | Metrics declare abstention handling | `ck_metric_abstention_handling`, `uq_metric_unique_per_run` | `test_metric_must_declare_how_abstentions_were_handled`, `test_both_abstention_handlings_coexist_for_one_metric` | Implemented and verified |
 | Cascade deletes leave no orphans | `ondelete` clauses | `test_cascade_delete_removes_dependent_rows` | Implemented and verified |
-| Baseline migration | `backend/migrations/versions/0001_baseline_schema.py` | `test_migration_baseline.py` (2 tests) | Implemented and verified on SQLite |
+| Baseline migration | `backend/migrations/versions/0001_baseline_schema.py` | `test_migration_is_frozen.py` (10 tests); `test_postgresql_schema.py` (29) | **Frozen** — explicit operations, equivalent to the models, applied and verified on PostgreSQL 16 |
 | Schema on PostgreSQL (JSONB, BIGINT, functional indexes) | same | `test_postgresql_schema.py` — **29 tests, all passing** | **Verified on PostgreSQL 16**, 2026-11-05 |
 
 ### Repositories and persistence functions

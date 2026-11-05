@@ -704,4 +704,11 @@ the suite.
 unverified-PostgreSQL gap served its purpose and was deleted along with its
 file, whose other two tests are superseded by the equivalence suite.
 
-**Status:** frozen and equivalent on SQLite. **Not yet applied to PostgreSQL.**
+**Verified on PostgreSQL, 2026-11-05.** The frozen revision was applied to a
+newly created database, `privacy_auditor_frozen_20261105_test`, and all 29
+integration tests passed against it. The frozen revision therefore produces
+the same schema the metadata build produced and that was verified the same
+day, which is what Strategy A had to demonstrate.
+
+**Status:** frozen, equivalent to the models, and verified on PostgreSQL 16.
+The baseline is now a fixed historical record.

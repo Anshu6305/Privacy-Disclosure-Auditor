@@ -629,3 +629,43 @@ That database remains stamped `0001_baseline` from the **previous**,
 metadata-built version of the revision. It was not modified, per safeguard 1.
 It should now be treated as superseded: the authoritative verification is the
 new database created for the frozen revision.
+
+### Frozen baseline verified on PostgreSQL
+
+A new database was created for the purpose and neither existing database was
+touched:
+
+```
+$ docker exec -i auditor_database psql -U auditor -d privacy_auditor \
+    -c "CREATE DATABASE privacy_auditor_frozen_20261105_test OWNER auditor;"
+CREATE DATABASE
+
+$ cd backend && POSTGRES_DB=privacy_auditor_frozen_20261105_test \
+    ../.venv/bin/alembic upgrade head
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_baseline,
+      Baseline schema: the sixteen tables of the approved Phase 3 design.
+
+$ .venv/bin/pytest -m integration -v
+collected 226 items / 197 deselected / 29 selected
+tests/integration/test_postgresql_schema.py .............................
+                29 passed, 197 deselected in 0.45s
+```
+
+**29 passed, nothing skipped.** The frozen revision produces the same schema
+the metadata build produced and that was verified earlier the same day. That
+is the result Strategy A had to demonstrate: the migration is now a fixed
+historical record rather than a snapshot of whatever the models happen to say.
+
+The run also confirms the obsolete placeholder is gone — the previous
+integration run reported "29 passed, 1 skipped" and this one reports no skip.
+
+### Databases on the team machine, after this task
+
+| Database | State | Touched? |
+|---|---|---|
+| `privacy_auditor` | Empty, 0 tables, never migrated | **No** |
+| `privacy_auditor_test` | Stamped `0001_baseline` from the **old** metadata build; superseded | **No** |
+| `privacy_auditor_frozen_20261105_test` | Created for this verification; stamped `0001_baseline` from the frozen revision | Created, then verified |
+
+No database was dropped, reset or recreated. No `docker compose down -v`, no
+`DROP DATABASE`.
