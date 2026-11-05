@@ -1,7 +1,7 @@
 # C-53 resolution note — ALG-11 index usability
 
 Date: 2026-11-05 · revised 2026-11-05 after implementation
-Status: **implemented and approved; PostgreSQL verification part-complete.**
+Status: **RESOLVED — tested and verified on PostgreSQL 16, 2026-11-05.**
 
 **Measured on the team Mac, 2026-11-05:**
 
@@ -24,9 +24,15 @@ because `CursorResult` has `.keys()` and `dict` then subscripts it; fixed with
 `.all()`. Neither assertion was weakened. Both are recorded in the consistency
 log.
 
-**Still outstanding:** the downgrade and re-upgrade checks, the re-run that
-proves the skip gate fires, and the `EXPLAIN` diagnostic. The run stopped at
-the failing test before reaching them.
+**Complete.** The third run verified every stage: upgrade, operator classes,
+collation, 56 passed with the revision applied, downgrade removing only the two
+pattern indexes, 49 passed and 7 skipped with it removed, and re-upgrade.
+Eligibility is asserted inside the suite by
+`test_prefix_predicate_is_index_eligible` and
+`test_combined_f01_query_is_index_eligible`, both among the 56.
+
+Three defects were found and fixed along the way — C-56, C-57 and C-58 — **all
+in the verification code, none in the correction**.
 Approved: 2026-11-05. Implemented as the additive revision `0002_pattern_ops`.
 Finding confirmed by: the C-53 diagnostic run on the team Mac against
 `privacy_auditor_frozen_20261105_test`, 2026-11-05.

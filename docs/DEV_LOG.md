@@ -1800,3 +1800,75 @@ Focused test, all integration, full regression: **461 passed, 56 skipped**.
 **C-53 still not fully verified.** Outstanding: the downgrade, the re-upgrade,
 the re-run proving the skip gate fires, and the `EXPLAIN` eligibility
 diagnostic — no run has reached them yet.
+
+---
+
+## 2026-11-05 — C-53 CLOSED: tested and verified on PostgreSQL 16
+
+Log: `c53_verification_20261105_232120.log`, database
+`privacy_auditor_c53_20261105d_test`.
+
+| Stage | Result |
+|---|---|
+| Compose service, from the configuration | `database` |
+| Upgrade `-> 0001_baseline -> 0002_pattern_ops` | recorded as `0002_pattern_ops` |
+| Operator classes, from `pg_opclass` | both `_pattern` **`text_pattern_ops`**; both originals `text_ops` |
+| Definitions | `lower((app_name)::text) text_pattern_ops`, `lower((package_name)::text) text_pattern_ops` |
+| Collation | **`en_US.utf8`** |
+| Integration tests, applied | **56 passed, 0 skipped** |
+| Downgrade | both pattern indexes removed, **both baseline indexes retained** |
+| Integration tests, removed | **49 passed, 7 skipped** — the gate fires |
+| Re-upgrade | back at `0002_pattern_ops` |
+
+**Eligibility is verified by assertion, not by reading a plan.**
+`test_prefix_predicate_is_index_eligible` and
+`test_combined_f01_query_is_index_eligible` are among the 56: they seed rows in
+a rolled-back transaction, `EXPLAIN` with `enable_seqscan = off`, and assert an
+`Index Cond` using `~>=~` on a `*_pattern` index.
+
+No performance claim. At 300 to 500 rows a sequential scan remains the right
+plan; the correction makes the approved O(log N + m) claim true, nothing more.
+
+### C-58 — the one stage that failed, and it was mine again
+
+Stage 11, the diagnostic script:
+`TypeError: '<' not supported between instances of 'str' and 'int'`.
+
+When I added `datctype` and `alembic_version` to its metadata query, every
+column after `datcollate` shifted. I updated the print statements and missed a
+row-count comparison three lines below that still read `meta[2]` — by then the
+collation string.
+
+Fixed by unpacking into names, `database, collate, ctype, row_count, applied =
+meta`, so positions cannot drift out of step with the query again. Verified by
+parsing the script's own SQL, counting its top-level columns, and confirming
+five columns against five unpack targets.
+
+The run also showed `rows in application: 0`, so the script now says explicitly
+when the table is empty and points at the two eligibility tests as the real
+evidence, instead of implying its plans prove something about an empty
+relation.
+
+**This did not affect the verification.** The assertions that matter are in the
+test suite and passed at stage 9. The script is a pretty-printer.
+
+### The pattern across three runs
+
+Three defects during verification — C-56 (a hard-coded revision), C-57
+(`dict(CursorResult)`), C-58 (a shifted tuple index) — **every one of them in
+my verification code, none in the correction.** The schema change was right on
+the first run. Worth stating because the opposite impression would be easy to
+take from three failed runs, and because the lesson is specific: each defect
+came from asserting or indexing a fixed position that something else had since
+moved.
+
+### Closed
+
+C-53 is **Tested and verified** in the consistency log, master plan,
+traceability matrix, tracker and resolution note.
+`scripts/verify_c53.sh` is kept as the template for verifying future
+migrations; `d_test` is added to its `PROTECTED` list and the target is now
+`e_test`, so six database names are guarded and none can be reused.
+
+Verified here: `ruff check .` all checks passed; `pytest tests -p no:warnings`
+→ **461 passed, 56 skipped**; `bash -n` clean.

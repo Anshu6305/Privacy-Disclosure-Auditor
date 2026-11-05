@@ -30,16 +30,19 @@
 
 set -euo pipefail
 
-DISPOSABLE_DB="privacy_auditor_c53_20261105d_test"
+# C-53 is closed: verified on 2026-11-05 against privacy_auditor_c53_20261105d_test.
+# This script is kept as the template for verifying any future migration.
+DISPOSABLE_DB="privacy_auditor_c53_20261105e_test"
 # Never a target. The first three are the project's own databases. The three
 # c53 databases are earlier verification runs the team asked to keep, so this
 # script must neither reuse nor disturb them:
 #   _test   hit the collision guard
 #   b_test  gave the operator classes and the en_US.utf8 collation
 #   c_test  got as far as the CursorResult failure (C-57)
+#   d_test  the run that verified C-53 end to end
 PROTECTED=("privacy_auditor" "privacy_auditor_test" "privacy_auditor_frozen_20261105_test"
            "privacy_auditor_c53_20261105_test" "privacy_auditor_c53_20261105b_test"
-           "privacy_auditor_c53_20261105c_test")
+           "privacy_auditor_c53_20261105c_test" "privacy_auditor_c53_20261105d_test")
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"

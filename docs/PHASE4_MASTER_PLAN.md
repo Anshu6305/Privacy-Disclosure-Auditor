@@ -52,7 +52,7 @@ This does not block Phase 4. It splits the work: all source code, schema, tests 
 
 | F-id | Responsibility | Planned module |
 |---|---|---|
-| F-01 | Application search | `backend/app/db/repositories/application_repo.py` — **implemented, M3B part 1** |
+| F-01 | Application search | `backend/app/db/repositories/application_repo.py` — **implemented and PostgreSQL-verified, M3B part 1**; ALG-11 index correction C-53 verified 2026-11-05 |
 | F-02 | Audit request | `backend/app/services/audit_service.py` |
 | F-03 | Unknown-application handling | `backend/app/db/repositories/application_repo.py` — **implemented, M3B part 1** |
 | F-04 | Declaration loading | `backend/app/db/repositories/snapshot_repo.py` |

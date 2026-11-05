@@ -49,9 +49,10 @@ can run (§2.2).
 
 | Item | Status | What is outstanding |
 |---|---|---|
-| **C-53** pattern-class search indexes, revision `0002_pattern_ops` | **Partly verified** | **Done 2026-11-05:** operator classes (`text_pattern_ops` on both new, `text_ops` retained on both original), collation `en_US.utf8`, upgrade to `0002_pattern_ops`. **Outstanding:** downgrade and re-upgrade, the re-run proving the skip gate fires, and `EXPLAIN` eligibility. Re-run `bash scripts/verify_c53.sh` |
-| **C-56** a test asserted one migration revision | **Fixed** | Replaced by four ancestry-based tests from Alembic's revision graph, covering both migration states. Needs the PostgreSQL re-run to execute |
-| **C-57** `dict(CursorResult)` TypeError | **Fixed** | `.all()` then `dict(rows)`. Reproduced on SQLite before fixing; assertion unchanged. Needs the PostgreSQL re-run to execute |
+| **C-53** pattern-class search indexes, revision `0002_pattern_ops` | **Tested and verified** | PostgreSQL 16, 2026-11-05, `privacy_auditor_c53_20261105d_test`. Operator classes, collation `en_US.utf8`, 56 passed applied / 49 passed + 7 skipped after downgrade, baseline indexes retained, EXPLAIN eligibility asserted. **Closed** |
+| **C-56** a test asserted one migration revision | **Fixed and verified** | Four ancestry-based tests from Alembic's revision graph; both migration states exercised on PostgreSQL |
+| **C-57** `dict(CursorResult)` TypeError | **Fixed and verified** | `.all()` then `dict(rows)`; passed in both states |
+| **C-58** diagnostic indexed a grown result tuple | **Fixed** | Named unpacking; arity checked against the script's own SQL. Did not affect C-53's verification — the eligibility assertions are in the test suite |
 
 ### Established facts, for reference
 

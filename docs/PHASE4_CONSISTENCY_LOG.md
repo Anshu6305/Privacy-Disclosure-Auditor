@@ -1026,8 +1026,7 @@ the `LIKE` is not.
 search changes, and on a corpus of 300 to 500 applications a sequential scan is
 not noticeable. It matters for NFR performance claims, not for results.
 
-**Status:** **confirmed; correction implemented; PostgreSQL verification
-part-complete.**
+**Status:** **RESOLVED — tested and verified on PostgreSQL 16, 2026-11-05.**
 
 **Measured on PostgreSQL 16, team Mac, 2026-11-05:** both pattern indexes
 report `text_pattern_ops`; both baseline indexes retain `text_ops`; the
@@ -1035,9 +1034,35 @@ database collation is **`en_US.utf8`**. That collation is the condition C-53
 depends on — collation-aware, not `C` — so the premise is now confirmed by
 measurement rather than inferred from a missing index condition.
 
-**Outstanding:** the downgrade and re-upgrade checks, the re-run proving the
-skip gate fires, and the `EXPLAIN` eligibility diagnostic. The run stopped at a
-failing test before reaching them. See C-56.
+**Verified end to end** on `privacy_auditor_c53_20261105d_test`, log
+`c53_verification_20261105_232120.log`:
+
+| Stage | Result |
+|---|---|
+| Compose service identified from the configuration | `database` |
+| Upgrade `-> 0001_baseline -> 0002_pattern_ops` | succeeded; recorded as `0002_pattern_ops` |
+| Operator classes, from `pg_opclass` | both `_pattern` indexes **`text_pattern_ops`**; both originals `text_ops` |
+| Index definitions | `lower((app_name)::text) text_pattern_ops` and `lower((package_name)::text) text_pattern_ops` |
+| Collation | **`en_US.utf8`** — collation-aware, which is the condition C-53 depends on |
+| Integration tests, revision applied | **56 passed, 0 skipped** |
+| Downgrade to `0001_baseline` | both pattern indexes removed; **both baseline indexes retained** |
+| Integration tests, revision removed | **49 passed, 7 skipped** — the gate fires |
+| Re-upgrade | back at `0002_pattern_ops` |
+
+**Index eligibility is verified by assertion, not by inspection.**
+`test_prefix_predicate_is_index_eligible` and
+`test_combined_f01_query_is_index_eligible` are among the 56 that passed. They
+seed rows inside a rolled-back transaction, run `EXPLAIN` with
+`enable_seqscan = off`, and assert an `Index Cond` using `~>=~` on a
+`*_pattern` index. That is stronger evidence than reading a plan by eye.
+
+**No performance claim.** `enable_seqscan = off` establishes eligibility only.
+At 300 to 500 rows PostgreSQL will still prefer a sequential scan, and that is
+the correct plan.
+
+Three defects were found and fixed during verification, **all of them in the
+verification code rather than in the correction**: C-56, C-57 and C-58. The
+schema change itself was right on the first run.
 
 The diagnostic was run on the team Mac on 2026-11-05 against
 `privacy_auditor_frozen_20261105_test`. Both prefix `LIKE` queries produced no
@@ -1208,5 +1233,35 @@ to rediscover this.
 **No assertion was changed.** Both branches — both indexes with
 `text_pattern_ops` at `0002_pattern_ops`, neither index at the baseline — are
 exactly as written for C-56. Only the construction of `found` changed.
+
+**Status:** resolved.
+
+### C-58 Diagnostic script indexed a result tuple that had grown
+
+**Approved design:** unaffected. A defect in `scripts/explain_application_search.py`.
+
+**What happened:** the final stage of C-53 verification failed with
+`TypeError: '<' not supported between instances of 'str' and 'int'`. Every
+other stage had passed.
+
+**Cause.** When `datctype` and `alembic_version` were added to the script's
+metadata query, every column position after `datcollate` shifted. The print
+statements were updated; a row-count comparison further down still read
+`meta[2]`, which had become the collation string. The error surfaced three
+lines of output after the real mistake.
+
+**Fix:** unpack into names — `database, collate, ctype, row_count, applied =
+meta` — so positions cannot drift out of step with the query again. Verified by
+parsing the script's own SQL, counting its top-level columns and confirming the
+count matches the number of unpack targets.
+
+Also added: the script now says explicitly when `application` is **empty**, as
+it was in that run, and points at the two eligibility tests as the
+authoritative evidence rather than implying its own plans prove anything about
+a relation with no rows.
+
+**This did not affect C-53's verification.** The eligibility assertions live in
+the test suite and passed in stage 9. The script is a convenience
+pretty-printer; its output was never the evidence.
 
 **Status:** resolved.

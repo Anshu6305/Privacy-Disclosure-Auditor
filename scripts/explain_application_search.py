@@ -102,12 +102,31 @@ def main() -> int:
                 "FROM pg_database WHERE datname = current_database()"
             )
         ).one()
-        print(f"database : {meta[0]}")
-        print(f"datcollate: {meta[1]}")
-        print(f"datctype  : {meta[2]}")
-        print(f"rows in application: {meta[3]}")
-        print(f"alembic_version: {meta[4] or '(none)'}")
-        if meta[2] < 1000:
+
+        # Unpacked into names rather than indexed. The previous version read
+        # meta[2] for the row count; adding datctype to the SELECT shifted
+        # every position after it, and the row-count check then compared a
+        # collation string to an integer. Names cannot drift out of step with
+        # the query the way positions can.
+        database, collate, ctype, row_count, applied = meta
+
+        print(f"database  : {database}")
+        print(f"datcollate: {collate}")
+        print(f"datctype  : {ctype}")
+        print(f"rows in application: {row_count}")
+        print(f"alembic_version: {applied or '(none)'}")
+
+        if row_count == 0:
+            print(
+                "\nNote: the application table is EMPTY. The plans below still "
+                "show whether a predicate *can* use an index, which is what "
+                "this script is for, but they describe an empty relation. The "
+                "authoritative eligibility evidence is "
+                "test_prefix_predicate_is_index_eligible and "
+                "test_combined_f01_query_is_index_eligible, which seed rows "
+                "inside a rolled-back transaction and assert on the plan."
+            )
+        elif row_count < 1000:
             print(
                 "\nNote: with few rows a sequential scan is the correct plan "
                 "regardless of indexes, which is why enable_seqscan is off "
