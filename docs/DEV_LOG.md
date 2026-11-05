@@ -1984,3 +1984,69 @@ disposable databases remain in `PROTECTED`; the next target is
 
 **Not verified:** anything on PostgreSQL. F-02 and F-04 to F-07 are not
 implemented yet — this step restored the schema they need.
+
+---
+
+## 2026-11-05 — C-60: the verification script hard-coded a head revision
+
+The M3B run created `privacy_auditor_m3b_20261105_test`, applied all three
+migrations correctly, and then failed because step 6 asserted the literal
+`0002_pattern_ops`. The database was right; the script was wrong.
+
+**Same category error as C-56, in a shell script instead of a test:** asserting
+a fixed identifier that something else had moved. Fixed the same way — ask the
+graph.
+
+### What changed, beyond the one string
+
+The instruction not to replace a version string without reviewing the whole
+procedure was the right call; four other things were version-bound.
+
+**Head and base are now derived.** A new step 0b reads Alembic's
+`ScriptDirectory`, requires exactly one head (a branched history is reported,
+not guessed at), and prints the chain. Steps 6, 10 and 10c assert against
+`$HEAD_REV` and `$BASE_REV`.
+
+**Step 9 no longer counts tests.** At head the meaningful assertion is that
+**nothing skips** — every integration test should be applicable to the fully
+migrated schema, and a skip there would mean a guard fired when it should not
+have. The script now fails if the summary contains "skipped" and prints the
+summary either way. A total like "56 passed" would have gone stale at the next
+test added.
+
+**Step 10b inverts that.** At the baseline, skips are the *evidence*: the
+pattern-index checks need 0002 and the collection-event fixture needs 0003. The
+script requires the run to be green **and** to contain skips, so a test that
+quietly assumed a schema it had not checked for would be caught. The number is
+not asserted.
+
+**Step 10c now verifies the round trip restored the schema, not just the
+version row.** It re-checks both pattern operator classes and that
+`disclosure_snapshot.status` exists. A downgrade/upgrade that left the version
+row right and the schema wrong would previously have passed.
+
+### Locked down
+
+Three new tests in `test_collection_event_migration.py`:
+
+- the script must contain `== "$HEAD_REV"` and `== "$BASE_REV"`, and **no
+  revision identifier may appear in any line that runs** (comments excepted),
+  so revision 0004 cannot break it the same way;
+- no `DROP DATABASE`, `DROP TABLE`, `TRUNCATE` or `down -v` in any executable
+  line — the script's own safety claim, asserted rather than trusted;
+- every earlier disposable database is in `PROTECTED`, and the current target
+  is not.
+
+### Databases
+
+`privacy_auditor_m3b_20261105_test` is preserved and added to `PROTECTED`,
+joining the three project databases and the four C-53 runs — eight guarded
+names. The next target is `privacy_auditor_m3b_20261105b_test`.
+
+### Verified
+
+Unit tests, migration tests and the full suite: **480 passed, 56 skipped**.
+`ruff check .` all checks passed. `bash -n` clean, and the graph-derivation
+block was executed exactly as written rather than only parsed.
+
+Option A and all three migrations are unchanged.

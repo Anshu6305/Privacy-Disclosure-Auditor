@@ -32,6 +32,14 @@ execute. Run either from the repository root.
 | 8 | The actual database collation | 8 |
 | 9 | F-01's results are unchanged by the new indexes | 9 |
 
+## Superseded by the script
+
+`scripts/verify_migrations.sh` is the procedure now, and it derives head and
+base from Alembic's revision graph rather than naming a revision. Any step
+below that names `0002_pattern_ops` or a test count is historical: the chain is
+`0001_baseline -> 0002_pattern_ops -> 0003_collection_event` at the time of
+writing and will grow again.
+
 ## Two corrections to the earlier note
 
 `docs/C53_RESOLUTION_NOTE.md` §10 was written before the Compose file was

@@ -244,3 +244,78 @@ def test_upgrade_refuses_to_restructure_a_populated_table(revisions):
     assert "disclosure_snapshot holds 1 row" in message
     assert "Re-import from the filesystem corpus" in message
     assert "M3_ACQUISITION_REPORT.md" in message
+
+
+# ---------------------------------------------------------------------------
+# The verification script must not hard-code a revision
+# ---------------------------------------------------------------------------
+
+VERIFY_SCRIPT = (
+    Path(__file__).resolve().parents[2] / "scripts" / "verify_migrations.sh"
+)
+
+
+def _executable_lines(text: str) -> list[str]:
+    """Lines that run, with whole-line comments removed."""
+    return [
+        line
+        for line in text.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def test_the_verification_script_derives_head_and_base_from_the_graph(revisions):
+    """Why this test exists.
+
+    The script asserted the literal ``0002_pattern_ops`` and failed the moment
+    ``0003_collection_event`` was added: a correctly migrated database was
+    reported as a failure. That is the same category error as C-56 — asserting
+    a fixed position that something else had moved — so it is fixed the same
+    way, and locked down here so it cannot come back at revision 0004.
+    """
+    script = VERIFY_SCRIPT.read_text(encoding="utf-8")
+    assert '== "$HEAD_REV"' in script
+    assert '== "$BASE_REV"' in script
+
+    identifiers = {module.revision for module in revisions}
+    offenders = [
+        line
+        for line in _executable_lines(script)
+        if any(identifier in line for identifier in identifiers)
+    ]
+    assert not offenders, (
+        "the verification script names a revision identifier in a line that "
+        "runs, so it will break when the next revision is added:\n"
+        + "\n".join(offenders)
+    )
+
+
+def test_the_verification_script_never_drops_a_database():
+    """Its own safety claim, asserted rather than trusted."""
+    script = VERIFY_SCRIPT.read_text(encoding="utf-8")
+    for destructive in ("DROP DATABASE", "DROP TABLE", "TRUNCATE", "down -v"):
+        for line in _executable_lines(script):
+            assert destructive not in line, f"{destructive!r} appears in: {line}"
+
+
+def test_every_earlier_disposable_database_is_protected():
+    """A re-run must never reuse a database an earlier run created."""
+    script = VERIFY_SCRIPT.read_text(encoding="utf-8")
+    target = next(
+        line.split("=", 1)[1].strip().strip('"')
+        for line in _executable_lines(script)
+        if line.startswith("DISPOSABLE_DB=")
+    )
+    protected_block = script[script.index("PROTECTED=(") :]
+    protected_block = protected_block[: protected_block.index(")")]
+
+    for required in (
+        "privacy_auditor",
+        "privacy_auditor_test",
+        "privacy_auditor_frozen_20261105_test",
+        "privacy_auditor_m3b_20261105_test",
+    ):
+        assert f'"{required}"' in protected_block, f"{required} is not protected"
+    assert f'"{target}"' not in protected_block, (
+        f"the target {target!r} is in PROTECTED, so the run would abort"
+    )

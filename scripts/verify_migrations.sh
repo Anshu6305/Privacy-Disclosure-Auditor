@@ -34,8 +34,8 @@
 set -euo pipefail
 
 # C-53 was verified on 2026-11-05 against privacy_auditor_c53_20261105d_test.
-# This run verifies the chain including 0003_collection_event (D-1 Option A).
-DISPOSABLE_DB="privacy_auditor_m3b_20261105_test"
+# This run verifies the whole chain, whatever its head currently is.
+DISPOSABLE_DB="privacy_auditor_m3b_20261105b_test"
 # Never a target. The first three are the project's own databases. The three
 # c53 databases are earlier verification runs the team asked to keep, so this
 # script must neither reuse nor disturb them:
@@ -43,9 +43,11 @@ DISPOSABLE_DB="privacy_auditor_m3b_20261105_test"
 #   b_test  gave the operator classes and the en_US.utf8 collation
 #   c_test  got as far as the CursorResult failure (C-57)
 #   d_test  the run that verified C-53 end to end
+#   m3b_20261105_test  reached step 6 before the hard-coded head check failed
 PROTECTED=("privacy_auditor" "privacy_auditor_test" "privacy_auditor_frozen_20261105_test"
            "privacy_auditor_c53_20261105_test" "privacy_auditor_c53_20261105b_test"
-           "privacy_auditor_c53_20261105c_test" "privacy_auditor_c53_20261105d_test")
+           "privacy_auditor_c53_20261105c_test" "privacy_auditor_c53_20261105d_test"
+           "privacy_auditor_m3b_20261105_test")
 # Every earlier disposable database is listed above so none can be reused. Add
 # the current one here and move DISPOSABLE_DB on before the next run.
 
@@ -76,6 +78,38 @@ ok "interpreter $("$PY" -V)"
 
 [[ -f .env ]] || fail ".env is missing at the repository root"
 ok ".env present (contents never printed)"
+
+# --- 0b. The migration graph ------------------------------------------------
+# Head and base are read from Alembic's own script directory. The previous
+# version asserted the literal "0002_pattern_ops" and failed the moment
+# 0003_collection_event was added - a correctly migrated database reported as
+# a failure. That is the same category error as C-56, in a shell script
+# instead of a test, so it is fixed the same way: ask the graph.
+step "0b. Migration graph"
+read -r HEAD_REV BASE_REV CHAIN <<<"$("$PY" - <<'PYEOF'
+import sys
+from pathlib import Path
+
+ROOT = Path.cwd()
+sys.path[:0] = [str(ROOT), str(ROOT / "backend")]
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
+config = Config(str(ROOT / "backend" / "alembic.ini"))
+config.set_main_option("script_location", str(ROOT / "backend" / "migrations"))
+scripts = ScriptDirectory.from_config(config)
+
+heads = scripts.get_heads()
+if len(heads) != 1:
+    sys.exit(f"expected one head, found {heads}: a branched history needs a merge")
+head = heads[0]
+chain = [s.revision for s in scripts.iterate_revisions(head, "base")][::-1]
+print(head, chain[0], ",".join(chain))
+PYEOF
+)" || fail "could not read the migration graph"
+[[ -n "$HEAD_REV" && -n "$BASE_REV" ]] || fail "the migration graph produced no head"
+ok "chain: ${CHAIN//,/ -> }"
+ok "head: $HEAD_REV   base: $BASE_REV"
 
 # --- 1. Compose service ---------------------------------------------------
 step "1. Identify the PostgreSQL Compose service from the configuration"
@@ -147,8 +181,8 @@ step "6. Apply both migrations to the disposable database only"
 
 REV="$(pg "$DISPOSABLE_DB" -tAc "SELECT version_num FROM alembic_version" | tr -d '[:space:]')"
 printf '  alembic_version: %s\n' "$REV"
-[[ "$REV" == "0002_pattern_ops" ]] || fail "expected 0002_pattern_ops, got '$REV'"
-ok "migrations recorded as 0002_pattern_ops"
+[[ "$REV" == "$HEAD_REV" ]] || fail "expected head $HEAD_REV, got '$REV'"
+ok "migrations recorded at head: $HEAD_REV"
 
 # --- 7. Operator classes from pg_opclass ----------------------------------
 # indexdef omits the operator class when it is the default, so a text_ops and a
@@ -197,18 +231,27 @@ TEST_DATABASE_URL="$("$PY" scripts/test_database_url.py "$DISPOSABLE_DB")" \
   || fail "could not compose TEST_DATABASE_URL"
 export TEST_DATABASE_URL
 
-"$PY" -m pytest tests/integration -p no:warnings -v \
-  || fail "integration tests failed with 0002_pattern_ops applied"
-ok "integration tests passed with the full chain applied (0 skips expected)"
+# Counts are not hard-coded. What matters at head is that **nothing skips**:
+# every integration test must be applicable to the fully migrated schema, and
+# a skip there would mean a guard fired when it should not have.
+HEAD_OUTPUT="$("$PY" -m pytest tests/integration -p no:warnings -v 2>&1)" || {
+  printf '%s\n' "$HEAD_OUTPUT"
+  fail "integration tests failed at head $HEAD_REV"
+}
+printf '%s\n' "$HEAD_OUTPUT"
+HEAD_SUMMARY="$(printf '%s\n' "$HEAD_OUTPUT" | tail -1)"
+grep -q "skipped" <<<"$HEAD_SUMMARY" \
+  && fail "a test skipped at head: $HEAD_SUMMARY. Every integration test should be applicable to the fully migrated schema."
+ok "integration tests passed with no skips at head: $HEAD_SUMMARY"
 
 # --- 10. Downgrade --------------------------------------------------------
 step "10. Downgrade to the baseline, then re-check"
-( cd backend && POSTGRES_DB="$DISPOSABLE_DB" ../.venv/bin/alembic downgrade 0001_baseline ) \
-  || fail "alembic downgrade failed"
+( cd backend && POSTGRES_DB="$DISPOSABLE_DB" ../.venv/bin/alembic downgrade "$BASE_REV" ) \
+  || fail "alembic downgrade to $BASE_REV failed"
 
 REV="$(pg "$DISPOSABLE_DB" -tAc "SELECT version_num FROM alembic_version" | tr -d '[:space:]')"
-[[ "$REV" == "0001_baseline" ]] || fail "after downgrade, alembic_version is '$REV'"
-ok "downgraded to 0001_baseline"
+[[ "$REV" == "$BASE_REV" ]] || fail "after downgrade, alembic_version is '$REV'"
+ok "downgraded to $BASE_REV"
 
 GONE="$(pg "$DISPOSABLE_DB" -tAc \
   "SELECT count(*) FROM pg_indexes WHERE tablename = 'application'
@@ -222,15 +265,40 @@ KEPT="$(pg "$DISPOSABLE_DB" -tAc \
 [[ "$KEPT" == "2" ]] || fail "expected the 2 baseline indexes to remain, found $KEPT"
 ok "both baseline indexes retained"
 
-step "10b. Integration tests with the revision removed - the gate must fire"
-"$PY" -m pytest tests/integration -p no:warnings \
-  || fail "integration tests failed at the baseline"
-ok "passed with skips at the baseline (7 revision-gated + 7 collection-event tests skip)"
+step "10b. Integration tests at the baseline - the guards must fire"
+# At the baseline, tests that need a later revision MUST skip rather than fail:
+# the pattern-index checks need 0002, and the collection-event fixture needs
+# 0003. Skips here are the evidence the guards work; a failure would mean a
+# test assumed a schema it had not checked for. The exact number is not
+# asserted, because it changes whenever a revision or a test is added - which
+# is precisely how the previous hard-coded expectation broke.
+BASE_OUTPUT="$("$PY" -m pytest tests/integration -p no:warnings 2>&1)" || {
+  printf '%s\n' "$BASE_OUTPUT"
+  fail "integration tests failed at the baseline; they should skip, not fail"
+}
+printf '%s\n' "$BASE_OUTPUT"
+BASE_SUMMARY="$(printf '%s\n' "$BASE_OUTPUT" | tail -1)"
+grep -q "skipped" <<<"$BASE_SUMMARY" \
+  || fail "nothing skipped at the baseline: $BASE_SUMMARY. The revision guards did not fire, so those tests may be passing vacuously."
+ok "guards fired as designed: $BASE_SUMMARY"
 
-step "10c. Re-apply the revision"
+step "10c. Re-apply the chain"
 ( cd backend && POSTGRES_DB="$DISPOSABLE_DB" ../.venv/bin/alembic upgrade head ) \
   || fail "re-upgrade failed"
-ok "back at 0002_pattern_ops"
+REV="$(pg "$DISPOSABLE_DB" -tAc "SELECT version_num FROM alembic_version" | tr -d '[:space:]')"
+[[ "$REV" == "$HEAD_REV" ]] || fail "after re-upgrade, alembic_version is '$REV'"
+ok "back at head: $HEAD_REV"
+
+# The round trip must restore the schema, not merely the version row.
+for index_name in ix_application_lower_name_pattern ix_application_lower_package_pattern; do
+  check_opclass "$index_name" text_pattern_ops
+done
+STATUS_COL="$(pg "$DISPOSABLE_DB" -tAc \
+  "SELECT count(*) FROM information_schema.columns
+     WHERE table_name = 'disclosure_snapshot' AND column_name = 'status'" | tr -d '[:space:]')"
+[[ "$STATUS_COL" == "1" ]] \
+  || fail "disclosure_snapshot.status is missing after the round trip"
+ok "collection-event columns restored by the re-upgrade"
 
 # --- 11. Search diagnostic ------------------------------------------------
 step "11. ALG-11 search diagnostic"
@@ -243,10 +311,12 @@ Every automated check passed. Read these from the output above and report them:
 
   * step 7  - the four functional indexes and their operator classes
   * step 8  - datcollate, which is still unrecorded in the note
-  * step 9  - the pytest summary line (0 skips expected)
-  * step 10 - the downgrade, and the second summary (more skips are expected
-              there: the revision-gated tests AND the tests whose fixture needs
-              the collection-event schema)
+  * step 0b - the chain and its head
+  * step 9  - the pytest summary line (no skips expected at head)
+  * step 10 - the downgrade, and the baseline summary (skips ARE expected
+              there: the revision-gated tests and the collection-event fixture)
+  * step 10c- that the re-upgrade restored both the head revision and the
+              schema it describes
   * step 11 - whether the two prefix LIKE rows now report "index used: yes"
 
 enable_seqscan is off in step 11, which establishes index ELIGIBILITY only.

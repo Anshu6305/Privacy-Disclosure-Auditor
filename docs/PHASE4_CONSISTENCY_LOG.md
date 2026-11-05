@@ -1344,3 +1344,28 @@ error as C-56.
 **Status:** implemented and SQLite-verified. **PostgreSQL verification
 outstanding**, by `scripts/verify_migrations.sh` (renamed from
 `verify_c53.sh`, since it now verifies the whole chain).
+
+### C-60 The verification script hard-coded the head revision
+
+**What happened:** the M3B verification run applied `0001_baseline` →
+`0002_pattern_ops` → `0003_collection_event` correctly and then failed, because
+`scripts/verify_migrations.sh` asserted `alembic_version == '0002_pattern_ops'`.
+
+**Cause:** the same category error as C-56 — asserting a fixed identifier that
+a later change had moved — this time in a shell script rather than a test.
+
+**Fix:** head and base are derived from Alembic's `ScriptDirectory`, which also
+refuses a branched history rather than guessing. Four further version-bound
+assumptions were found in the same review and corrected: step 9 now asserts
+**no skips at head** rather than a test total; step 10b asserts the run is
+green **and** contains skips, since at the baseline skips are the evidence the
+revision guards fired; step 10c re-checks the operator classes and
+`disclosure_snapshot.status` so a round trip that restored the version row but
+not the schema cannot pass; and the downgrade target is the derived base.
+
+Three tests now lock this down: no revision identifier may appear in an
+executable line of the script, no destructive verb may appear in one, and every
+earlier disposable database must be in `PROTECTED` while the current target
+must not be.
+
+**Status:** resolved. Option A and all three migrations unchanged.
