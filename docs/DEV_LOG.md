@@ -2096,3 +2096,57 @@ preserved and protected — nine guarded names.
 
 Expected on the next run: step 9 **56 passed, 0 skipped**; step 10b green with
 skips.
+
+---
+
+## 2026-11-05 — C-62: head verified; the baseline stage found the last gap
+
+**Head passed completely.** 56 passed, 0 skipped at `0003_collection_event`,
+with the operator classes, the collation `en_US.utf8`, the upgrade and the
+downgrade all confirmed on PostgreSQL 16. The C-61 fixes worked: the seven
+tests that had skipped now run.
+
+The baseline stage then reported **3 failed, 39 passed, 14 skipped**, and the
+three failures were correct observations reported as defects:
+
+| Test | At `0001_baseline` |
+|---|---|
+| `test_timestamps_carry_a_time_zone` | names `collected_at`; it is `retrieved_at` before 0003 |
+| `test_every_declared_check_constraint_exists` | expects the models' 32 CHECKs; the baseline has 28 |
+| `test_audit_run_foreign_keys_are_all_not_null` | expects six FKs; the baseline has seven |
+
+Each compares the **live database** with the **current models**, and those
+agree only at head. At an earlier revision they legitimately differ, so
+failing there reports a correct database as broken.
+
+`schema_at_head` now skips those five tests unless the applied revision is the
+graph's head. Tests that assert something true of every revision — the
+baseline functional indexes, JSONB and BIGINT types, the constraint
+*enforcement* tests — carry no guard and keep running everywhere.
+
+### Fourth time, so it is closed statically
+
+C-56 hard-coded a revision in a test. C-60 hard-coded one in the script. C-61
+compared against the current revision instead of the ancestry. C-62 compared
+against the models without requiring head. One mistake in four costumes: an
+assertion that assumes a migration state it never checked.
+
+Three tests now parse the integration file with `ast` and fail if a test reads
+`Base.metadata`, or names a column 0003 introduced, without taking
+`schema_at_head`. The second check exists because
+`test_timestamps_carry_a_time_zone` names `collected_at` without touching
+`Base.metadata` — the first check alone would have missed it, which is exactly
+how it reached the Mac.
+
+### Verified
+
+**482 passed, 56 skipped**; the new guards add 3 tests to the unit suite; ruff
+clean; `bash -n` clean.
+
+Next disposable database: `privacy_auditor_m3b_20261105d_test`. The `c`
+database is preserved and protected — it was left at `0001_baseline` when the
+run aborted before step 10c, which is another reason not to reuse it. Ten
+guarded names.
+
+Expected next run: step 9 **56 passed, 0 skipped**; step 10b green with skips
+and **no failures**; step 10c head and schema restored.

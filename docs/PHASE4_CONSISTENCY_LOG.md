@@ -1405,3 +1405,38 @@ reaching the no-skips assertion that would have caught them. The assertion was
 right; it just never ran.
 
 **Status:** resolved. Option A and all three migrations unchanged.
+
+### C-62 Model-comparison tests failed at the baseline instead of skipping
+
+**The run that found it:** head passed completely — **56 passed, 0 skipped** at
+`0003_collection_event`, with both pattern operator classes, the collation, the
+upgrade and the downgrade all verified. The baseline stage then reported
+**3 failed, 39 passed, 14 skipped**.
+
+**The three failures were correct observations reported as defects:**
+
+| Test | At `0001_baseline` |
+|---|---|
+| `test_timestamps_carry_a_time_zone` | names `collected_at`, which is `retrieved_at` before 0003 |
+| `test_every_declared_check_constraint_exists` | expects the models' 32 CHECKs; the baseline has 28 |
+| `test_audit_run_foreign_keys_are_all_not_null` | expects Option A's six FKs; the baseline has seven |
+
+Each compares the **live database** with the **current models**. Those agree
+only at head. At an earlier revision they legitimately differ, so a failure
+there reports a correct database as broken.
+
+**Fix:** a `schema_at_head` fixture that skips when the applied revision is not
+the graph's head, applied to the five tests that derive their expectation from
+the models. Tests asserting something true of *every* revision — the baseline
+functional indexes, the JSONB and BIGINT types, the constraint *enforcement*
+tests — carry no guard and keep running everywhere.
+
+**Fourth occurrence of one mistake, so it is now closed statically.** C-56
+hard-coded a revision in a test, C-60 in the verification script, C-61
+compared against the current revision rather than the ancestry, and C-62
+compared against the models without requiring head. Three tests parse the
+integration file with `ast` and fail if a test reads `Base.metadata`, or names
+a column introduced by 0003, without taking the `schema_at_head` fixture. The
+next such test cannot be written without the guard.
+
+**Status:** resolved. Option A and all three migrations unchanged.

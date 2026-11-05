@@ -35,7 +35,7 @@ set -euo pipefail
 
 # C-53 was verified on 2026-11-05 against privacy_auditor_c53_20261105d_test.
 # This run verifies the whole chain, whatever its head currently is.
-DISPOSABLE_DB="privacy_auditor_m3b_20261105c_test"
+DISPOSABLE_DB="privacy_auditor_m3b_20261105d_test"
 # Never a target. The first three are the project's own databases. The three
 # c53 databases are earlier verification runs the team asked to keep, so this
 # script must neither reuse nor disturb them:
@@ -47,7 +47,8 @@ DISPOSABLE_DB="privacy_auditor_m3b_20261105c_test"
 PROTECTED=("privacy_auditor" "privacy_auditor_test" "privacy_auditor_frozen_20261105_test"
            "privacy_auditor_c53_20261105_test" "privacy_auditor_c53_20261105b_test"
            "privacy_auditor_c53_20261105c_test" "privacy_auditor_c53_20261105d_test"
-           "privacy_auditor_m3b_20261105_test" "privacy_auditor_m3b_20261105b_test")
+           "privacy_auditor_m3b_20261105_test" "privacy_auditor_m3b_20261105b_test"
+           "privacy_auditor_m3b_20261105c_test")
 # Every earlier disposable database is listed above so none can be reused. Add
 # the current one here and move DISPOSABLE_DB on before the next run.
 
@@ -267,8 +268,9 @@ ok "both baseline indexes retained"
 
 step "10b. Integration tests at the baseline - the guards must fire"
 # At the baseline, tests that need a later revision MUST skip rather than fail:
-# the pattern-index checks need 0002, and the collection-event fixture needs
-# 0003. Skips here are the evidence the guards work; a failure would mean a
+# the pattern-index checks need 0002, the collection-event fixture needs 0003,
+# and the tests that compare the live schema against the current models only
+# agree at head. Skips here are the evidence the guards work; a failure would mean a
 # test assumed a schema it had not checked for. The exact number is not
 # asserted, because it changes whenever a revision or a test is added - which
 # is precisely how the previous hard-coded expectation broke.

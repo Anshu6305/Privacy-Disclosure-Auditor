@@ -384,3 +384,97 @@ def test_the_integration_gate_uses_ancestry():
     assert "iterate_revisions" in source, (
         "the revision gate no longer consults the migration graph"
     )
+
+
+# ---------------------------------------------------------------------------
+# Integration tests that compare against the models must say so
+# ---------------------------------------------------------------------------
+
+INTEGRATION_SCHEMA_TESTS = (
+    Path(__file__).resolve().parents[1] / "integration" / "test_postgresql_schema.py"
+)
+
+#: Columns that exist only from revision 0003 onwards. A test naming one of
+#: these is asserting something about head, whether or not it reads the models.
+POST_BASELINE_COLUMNS = {
+    "collected_at",
+    "source_url_listing",
+    "source_url_policy",
+    "retrieval_mode",
+    "policy_doc_path",
+    "policy_doc_sha256",
+    "policy_doc_bytes",
+    "policy_http_status",
+    "declares_no_data_collected",
+}
+
+
+def _test_functions(path: Path):
+    import ast
+
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+            yield node
+
+
+def _parameters(node) -> set[str]:
+    return {argument.arg for argument in node.args.args}
+
+
+def test_model_comparing_integration_tests_require_head():
+    """The fourth occurrence of one mistake, closed statically.
+
+    C-56, C-60 and C-61 were each an assertion that assumed a migration state
+    it had not checked. The baseline stage of the verification run produced
+    three more: tests comparing the live database with the current models
+    failed at ``0001_baseline``, where the two legitimately differ.
+
+    A test that reads ``Base.metadata`` is asserting "the database matches the
+    models", which is only true at head. This requires it to say so by taking
+    the ``schema_at_head`` fixture, so the next such test cannot be written
+    without one.
+    """
+    import ast
+
+    offenders = []
+    for node in _test_functions(INTEGRATION_SCHEMA_TESTS):
+        body = ast.dump(node)
+        reads_models = "Base" in body and "metadata" in body
+        if reads_models and "schema_at_head" not in _parameters(node):
+            offenders.append(node.name)
+
+    assert not offenders, (
+        "these integration tests compare the database with the models but do "
+        "not require the database to be at head, so they fail instead of "
+        f"skipping at an earlier revision: {offenders}"
+    )
+
+
+def test_tests_naming_post_baseline_columns_require_head():
+    """A column renamed by 0003 does not exist at the baseline.
+
+    ``test_timestamps_carry_a_time_zone`` names ``collected_at`` without
+    touching ``Base.metadata``, so the check above would not have caught it.
+    It failed at the baseline for exactly that reason.
+    """
+    import ast
+
+    source = INTEGRATION_SCHEMA_TESTS.read_text(encoding="utf-8")
+    offenders = []
+    for node in _test_functions(INTEGRATION_SCHEMA_TESTS):
+        segment = ast.get_source_segment(source, node) or ""
+        named = {column for column in POST_BASELINE_COLUMNS if column in segment}
+        if named and "schema_at_head" not in _parameters(node):
+            offenders.append((node.name, sorted(named)))
+
+    assert not offenders, (
+        "these integration tests name a column that only exists from "
+        f"revision 0003 onwards, but do not require head: {offenders}"
+    )
+
+
+def test_the_guard_exists_and_compares_against_the_graph_head():
+    source = INTEGRATION_SCHEMA_TESTS.read_text(encoding="utf-8")
+    assert "def schema_at_head(" in source
+    assert "get_current_head()" in source
