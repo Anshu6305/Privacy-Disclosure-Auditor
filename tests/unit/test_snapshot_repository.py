@@ -563,3 +563,119 @@ def test_a_partial_record_still_imports(session):
     session.flush()
     assert snapshot.status == SNAPSHOT_FETCH_FAILED
     assert snapshot.declares_no_data_collected is None
+
+
+# ---------------------------------------------------------------------------
+# C-64: a failed declaration side does not hide a retrieved policy
+# ---------------------------------------------------------------------------
+
+
+def _event_with_policy_but_no_declaration(session, app_id, policy_file, outcome):
+    return SnapshotRepository(session).record_collection_event(
+        app_id,
+        record(
+            declaration=None,
+            policy_path=str(policy_file),
+            policy_sha256=POLICY_SHA,
+            provenances=(
+                provenance(SOURCE_DATA_SAFETY, outcome, LISTING),
+                provenance(SOURCE_PRIVACY_POLICY, OUTCOME_SUCCESS, POLICY_URL),
+            ),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "outcome,expected_status",
+    [
+        (OUTCOME_NOT_FOUND, SNAPSHOT_DECLARATION_ABSENT),
+        (OUTCOME_PARSE_FAILED, SNAPSHOT_PARSE_FAILED),
+    ],
+)
+def test_a_policy_loads_even_when_the_declaration_side_failed(
+    session, app_id, policy_file, outcome, expected_status
+):
+    """C-64. The bug this replaces returned None for a stored document.
+
+    `declaration_absent` and `parse_failed` describe what happened to the
+    **declaration**. The policy was retrieved normally in both cases, and
+    `derive_status` only returns either when a document is present. Excluding
+    them from SNAPSHOT_HAS_POLICY made load_policy_document refuse to read a
+    document the row was holding — silently, by returning None rather than
+    raising, so it read as "this event has no policy".
+    """
+    repo = SnapshotRepository(session)
+    snapshot = _event_with_policy_but_no_declaration(
+        session, app_id, policy_file, outcome
+    )
+    session.flush()
+    assert snapshot.status == expected_status
+
+    loaded = repo.load_policy_document(snapshot.snapshot_id)
+    assert loaded is not None, f"{expected_status} hides its policy document"
+    assert loaded.content_sha256 == POLICY_SHA
+
+    # The declaration is still absent, which is the other half of the point.
+    assert repo.load_declaration(snapshot.snapshot_id) is None
+
+
+def test_the_summary_agrees_with_what_can_be_loaded(session, app_id, policy_file):
+    repo = SnapshotRepository(session)
+    _event_with_policy_but_no_declaration(
+        session, app_id, policy_file, OUTCOME_NOT_FOUND
+    )
+    session.flush()
+
+    summary = repo.latest_for_app(app_id)
+    assert summary is not None
+    assert summary.has_policy is True
+    assert summary.has_declaration is False
+
+
+def test_every_status_that_implies_a_policy_is_in_the_has_policy_set():
+    """The structural guard, not just the two cases above.
+
+    `derive_status` decides, from a record, which statuses can occur with a
+    policy document present. Anything it can return there must be in
+    SNAPSHOT_HAS_POLICY, or a stored document becomes unreadable again the
+    next time a status is added.
+    """
+    from analysis.vocabulary import SNAPSHOT_HAS_POLICY
+
+    reachable_with_policy = set()
+    for outcome in (
+        OUTCOME_SUCCESS,
+        OUTCOME_NOT_FOUND,
+        OUTCOME_PARSE_FAILED,
+        OUTCOME_FETCH_FAILED,
+    ):
+        for has_declaration in (True, False):
+            candidate = record(
+                declaration=declaration() if has_declaration else None,
+                policy_path="data/policies/raw/x.html",
+                policy_sha256=POLICY_SHA,
+                provenances=(
+                    provenance(SOURCE_DATA_SAFETY, outcome, LISTING),
+                    provenance(SOURCE_PRIVACY_POLICY, OUTCOME_SUCCESS, POLICY_URL),
+                ),
+            )
+            reachable_with_policy.add(derive_status(candidate))
+
+    missing = reachable_with_policy - SNAPSHOT_HAS_POLICY
+    assert not missing, (
+        "derive_status can return these for an event that holds a policy "
+        f"document, but SNAPSHOT_HAS_POLICY excludes them: {sorted(missing)}"
+    )
+
+
+def test_every_status_that_implies_a_declaration_is_in_its_set():
+    """The same guard for the declaration side."""
+    from analysis.vocabulary import SNAPSHOT_HAS_DECLARATION
+
+    reachable = {
+        derive_status(record()),
+        derive_status(
+            record(policy_path="data/policies/raw/x.html", policy_sha256=POLICY_SHA)
+        ),
+    }
+    assert reachable <= SNAPSHOT_HAS_DECLARATION

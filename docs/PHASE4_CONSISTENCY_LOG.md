@@ -1491,3 +1491,41 @@ Five defects were found and fixed across the verification runs — C-56, C-57,
 C-58, C-60, C-61, C-62 — **every one of them in verification code, none in the
 schema changes themselves.** Both migrations were correct on their first
 application.
+
+### C-64 A failed declaration side hid a successfully retrieved policy
+
+**Found by:** the first PostgreSQL run of the M3B Part 2 integration tests.
+71 passed, 1 failed — `test_a_live_stored_document_verifies_when_loaded_back`
+asserted a stored document loaded back, and got `None`.
+
+**This one was the code, not the test.** `SNAPSHOT_HAS_POLICY` listed only
+`complete` and `policy_only`. But `declaration_absent` and `parse_failed`
+describe what happened to the **declaration**; `derive_status` returns either
+of them only when a policy document *is* present. `load_policy_document`
+gated on that set, so for those two statuses it returned `None` for a snapshot
+that was holding a document — and returned it **silently**, so the caller read
+"this event has no policy" rather than seeing an error.
+
+That is the exact failure mode this milestone is built to prevent, turned on
+itself: a successful retrieval presented as an absence.
+
+**Fix, in two parts.**
+
+1. `SNAPSHOT_HAS_POLICY` now includes `declaration_absent` and `parse_failed`.
+2. More importantly, the loaders no longer ask a derived set. `load_policy_document`
+   keys on `policy_doc_path` being present — the row holding a path is the
+   authoritative fact that a document exists, and a CHECK already ties the
+   path to its hash. `load_declaration` keys on `declares_no_data_collected`
+   being NULL, which is precisely "the section was never read". Both questions
+   are now answered by the column that records the fact rather than by a
+   summary one indirection away from it.
+
+**Guards added.** Two parametrised tests cover the two statuses directly, and
+a structural test enumerates every status `derive_status` can return for a
+record that holds a policy document and asserts all of them are in
+`SNAPSHOT_HAS_POLICY` — so a status added later cannot make a stored document
+unreadable again. Verified by reintroducing the bug: the guards fail, and the
+suite had been green with the bug present, which is why the coverage was
+missing in the first place.
+
+**Status:** resolved.

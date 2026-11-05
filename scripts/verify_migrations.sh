@@ -35,7 +35,7 @@ set -euo pipefail
 
 # C-53 was verified on 2026-11-05 against privacy_auditor_c53_20261105d_test.
 # This run verifies the whole chain, whatever its head currently is.
-DISPOSABLE_DB="privacy_auditor_m3b_20261106_test"
+DISPOSABLE_DB="privacy_auditor_m3b_20261106b_test"
 # Never a target. The first three are the project's own databases. The three
 # c53 databases are earlier verification runs the team asked to keep, so this
 # script must neither reuse nor disturb them:
@@ -48,7 +48,8 @@ PROTECTED=("privacy_auditor" "privacy_auditor_test" "privacy_auditor_frozen_2026
            "privacy_auditor_c53_20261105_test" "privacy_auditor_c53_20261105b_test"
            "privacy_auditor_c53_20261105c_test" "privacy_auditor_c53_20261105d_test"
            "privacy_auditor_m3b_20261105_test" "privacy_auditor_m3b_20261105b_test"
-           "privacy_auditor_m3b_20261105c_test" "privacy_auditor_m3b_20261105d_test")
+           "privacy_auditor_m3b_20261105c_test" "privacy_auditor_m3b_20261105d_test"
+           "privacy_auditor_m3b_20261106_test")
 # Every earlier disposable database is listed above so none can be reused. Add
 # the current one here and move DISPOSABLE_DB on before the next run.
 

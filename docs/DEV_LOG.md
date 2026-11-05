@@ -2339,3 +2339,52 @@ not a pass. One command on the Mac runs them.
 Still true, and stated in the M3B plan's completion report: zero applications
 collected, live retrieval never reached Google, no Data Safety parser,
 `SecurityPractices` has no column, and no end-to-end audit has run.
+
+---
+
+## 2026-11-06 — C-64: the first PostgreSQL run of M3B found a real bug
+
+71 passed, 1 failed. **This time the failure was the code, not the test.**
+
+`test_a_live_stored_document_verifies_when_loaded_back` stored a policy via
+F-06 and asked F-05 to load it back. It got `None`.
+
+`SNAPSHOT_HAS_POLICY` listed only `complete` and `policy_only`. But
+`declaration_absent` and `parse_failed` describe what happened to the
+**declaration** — `derive_status` returns either of them only when a policy
+document *is* present. `load_policy_document` gated on that set, so for those
+two statuses it refused to read a document the row was holding, and refused
+**silently**: it returned `None`, which reads as "this event has no policy".
+
+A successful retrieval presented as an absence. That is the precise failure
+mode this milestone exists to prevent, turned on itself.
+
+### Fixed in two parts, the second mattering more
+
+1. The set now includes both statuses.
+2. The loaders stopped asking a derived set. `load_policy_document` keys on
+   `policy_doc_path` — the row holding a path is the authoritative fact that a
+   document exists, and a CHECK already ties path to hash.
+   `load_declaration` keys on `declares_no_data_collected` being NULL, which
+   is exactly "the section was never read". Both questions are now answered by
+   the column that records the fact, not by a summary one step away from it.
+
+### Why the SQLite suite missed it
+
+It was green with the bug present. Every F-05 test used a `complete` or
+`policy_only` event; nothing exercised a policy stored alongside a failed
+declaration. The integration test that caught it was the first to combine
+F-06's realistic output — no parser, so `declaration_absent` — with an F-05
+load.
+
+Three guards added: two parametrised tests for the statuses directly, and a
+structural one that enumerates every status `derive_status` can return for a
+record holding a policy and asserts all of them are in `SNAPSHOT_HAS_POLICY`.
+**Verified by reintroducing the bug** — the guards fail, which is the only
+evidence worth having that a regression test works.
+
+### Verified
+
+**551 passed, 72 skipped**; ruff clean. Next disposable database:
+`privacy_auditor_m3b_20261106b_test`; the failed run's database is preserved
+and protected — twelve guarded names.

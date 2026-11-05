@@ -167,8 +167,20 @@ SNAPSHOT_HAS_DECLARATION: Final[frozenset[str]] = frozenset(
     {SNAPSHOT_COMPLETE, SNAPSHOT_DECLARATION_ONLY}
 )
 #: Statuses in which a privacy policy document is available to audit.
+#:
+#: ``declaration_absent`` and ``parse_failed`` belong here. Both describe a
+#: collection event whose **declaration** side failed or found nothing while
+#: the policy was retrieved normally: `derive_status` only returns either of
+#: them when a policy document is present. Leaving them out made
+#: ``load_policy_document`` return None for a snapshot that holds a document,
+#: which is C-64.
 SNAPSHOT_HAS_POLICY: Final[frozenset[str]] = frozenset(
-    {SNAPSHOT_COMPLETE, SNAPSHOT_POLICY_ONLY}
+    {
+        SNAPSHOT_COMPLETE,
+        SNAPSHOT_POLICY_ONLY,
+        SNAPSHOT_DECLARATION_ABSENT,
+        SNAPSHOT_PARSE_FAILED,
+    }
 )
 #: Statuses from which a full cross-source audit can run. Anything else leaves
 #: one side of the comparison missing, which F-10 and ALG-8 must treat as

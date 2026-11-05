@@ -346,7 +346,13 @@ class SnapshotRepository:
         snapshot = self._session.get(DisclosureSnapshot, snapshot_id)
         if snapshot is None:
             raise SnapshotNotFoundError(f"no collection event {snapshot_id}")
-        if snapshot.status not in SNAPSHOT_HAS_DECLARATION:
+
+        # Keyed on the column, not on a status set. `declares_no_data_collected`
+        # is NULL exactly when the Data Safety section was never read, which is
+        # the question being asked here. Deriving it from `status` instead put
+        # the answer one indirection away from the fact, and the equivalent
+        # mistake on the policy side became C-64.
+        if snapshot.declares_no_data_collected is None:
             return None
 
         rows = self._session.execute(
@@ -397,7 +403,10 @@ class SnapshotRepository:
         snapshot = self._session.get(DisclosureSnapshot, snapshot_id)
         if snapshot is None:
             raise SnapshotNotFoundError(f"no collection event {snapshot_id}")
-        if snapshot.status not in SNAPSHOT_HAS_POLICY or not snapshot.policy_doc_path:
+        # The row holding a path is the authoritative fact that a document
+        # exists; a CHECK constraint already ties the path to its hash. The
+        # status is a summary of the event, not the record of what it stored.
+        if not snapshot.policy_doc_path:
             return None
 
         path = Path(snapshot.policy_doc_path)
