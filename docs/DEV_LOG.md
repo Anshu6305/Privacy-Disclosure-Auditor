@@ -2202,3 +2202,88 @@ statically by three `ast`-based tests.
 
 Worth carrying into M3B Part 2: the risk in this project is not the change,
 it is the code that claims to check the change.
+
+---
+
+## 2026-11-06 — M3B Part 2: F-02, F-04, F-05, F-07 and the corpus import
+
+Built on the Option A schema verified in C-63. 67 new unit tests; full suite
+**528 passed, 56 skipped**; ruff clean.
+
+| File | What |
+|---|---|
+| `backend/app/db/repositories/snapshot_repo.py` | New. F-04, F-05, F-07 |
+| `backend/app/services/audit_service.py` | New. F-02 |
+| `backend/app/db/repositories/application_repo.py` | `upsert_from_record` |
+| `scripts/import_corpus.py` | New. Filesystem corpus → PostgreSQL |
+| `tests/unit/test_snapshot_repository.py` | New, 28 tests |
+| `tests/unit/test_audit_service.py` | New, 15 tests |
+
+### Three distinctions the code exists to keep
+
+**Absent category against declared-not-collected.** `_write_declared_practices`
+writes a row only for entries the declaration actually contains. Writing a row
+per known category with `is_collected = false` would turn "not mentioned" into
+"declared not collected" — a different disclosure and a different ALG-8
+verdict.
+
+**Unknown against declared-no-collection.** `declares_no_data_collected` is
+set to `None` when the Data Safety section was never read. Returning `False`
+there would assert the application was checked and makes no such statement.
+Three tests cover the three states.
+
+**Failure against absence.** `derive_status` distinguishes
+`declaration_absent` — the listing was reached and carries no Data Safety
+section, a fact about the application — from `fetch_failed` and
+`parse_failed`, which are facts about one moment. The remedies differ too: a
+parse failure means the adapter needs updating.
+
+### F-02 refuses first
+
+Creating an `audit_run` row commits the system to producing a report. A report
+built from one source would compare something against nothing, and ALG-8 would
+have to call that either agreement or absence — both wrong. So the
+preconditions are checked **before** the row exists, and a partial collection
+event is refused with the reason rather than queued and failed later. Seven
+distinct refusal reasons, each with its own remedy; a test asserts a refusal
+creates no row.
+
+Thresholds are pinned onto the run and carry `"provisional": true`, because
+they have not been tuned on a gold set.
+
+### F-05 re-verifies on every load
+
+The hash is checked each time the document is read, not only at collection. A
+file that has changed since collection raises rather than returning text,
+because evidence quoted from it would not be the text that was audited. A
+missing file raises too — the row claims a document and the filesystem
+disagrees, which is a corpus fault, not a disclosure fact. "This event has no
+policy" is different and returns `None`.
+
+### Import is additive and honest
+
+`upsert_from_record` refreshes rather than replaces: a later record missing a
+field does not blank it, because a collector who could not read the developer
+name has not discovered the application has none. A new collection event
+supersedes the previous active one instead of overwriting it, so history
+survives for F-30. Partial records import **with the status that says so**
+rather than being skipped — a corpus of only the records that worked would
+misrepresent itself. One record per transaction, so 299 good imports are not
+lost to one bad record.
+
+Run against the real corpus it reports honestly: *"No corpus at
+data/corpus/apps. Nothing to import."* **Zero applications have been
+collected.**
+
+### What is not done
+
+**F-06 live-retrieval wiring** — the gateway exists and is tested offline, but
+nothing yet writes a live retrieval through it into a snapshot.
+
+**No PostgreSQL integration tests for part 2.** Everything here is verified on
+SQLite with the same metadata. The repositories and the service need the same
+treatment the schema got in C-63, and that needs the Mac.
+
+`SecurityPractices` still has no column. `load_declaration` rebuilds a
+declaration with the default all-unknown instance rather than inventing four
+`False` values the database never stored.

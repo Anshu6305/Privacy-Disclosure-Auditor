@@ -222,6 +222,56 @@ class ApplicationRepository:
         ).first()
         return found is not None
 
+    # -- Writing: F-03's other half, used by the corpus import -------------
+
+    def upsert_from_record(self, record) -> tuple[int, bool]:
+        """Insert the application, or refresh the one already stored.
+
+        Returns ``(app_id, created)``.
+
+        **Refresh, not replace.** A corpus re-import must not blank a field
+        that an earlier record carried and this one does not: a collector who
+        could not read the developer name this time has not discovered that
+        the application has none. Only values actually present overwrite, and
+        ``last_seen_at`` records that the application was seen again.
+
+        ``package_name`` is never updated. It is the natural key, and a
+        changed package name is a different application.
+        """
+        from datetime import datetime, timezone
+
+        from app.db.models import Application
+
+        package_name = record.package_name.strip()
+        if not package_name:
+            raise ValueError("a corpus record has no package name")
+
+        existing = self._session.execute(
+            select(Application).where(Application.package_name == package_name)
+        ).scalar_one_or_none()
+
+        if existing is None:
+            application = Application(
+                package_name=package_name,
+                app_name=record.app_name,
+                developer_name=record.developer_name,
+                store_category=record.store_category,
+                play_store_url=record.play_store_url,
+            )
+            self._session.add(application)
+            self._session.flush()
+            return application.app_id, True
+
+        if record.app_name:
+            existing.app_name = record.app_name
+        for field in ("developer_name", "store_category", "play_store_url"):
+            value = getattr(record, field)
+            if value is not None:
+                setattr(existing, field, value)
+        existing.last_seen_at = datetime.now(timezone.utc)
+        self._session.flush()
+        return existing.app_id, False
+
     # -- F-03 -------------------------------------------------------------
 
     def resolve_or_report(

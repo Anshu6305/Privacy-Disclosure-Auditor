@@ -188,12 +188,12 @@ Milestone 1 except F-26 above.
 | F-id | Planned module | Milestone | Status |
 |---|---|---|---|
 | F-01 | `backend/app/db/repositories/application_repo.py` | M3B | **Implemented and PostgreSQL-verified** — ALG-11 prefix search; 43 unit + 14 integration tests passed 2026-11-05. **C-53 correction implemented** as `0002_pattern_ops`; its catalogue and EXPLAIN tests await a PostgreSQL run |
-| F-02 | `backend/app/services/audit_service.py` | M3B | Not implemented — unblocked by the D-1 ruling; schema restored by `0003_collection_event` |
+| F-02 | `backend/app/services/audit_service.py` | M3B | **Implemented** — refusal-first: 7 distinct refusal reasons, 15 tests. A partial collection event is refused, never queued |
 | F-03 | `backend/app/db/repositories/application_repo.py` | M3B | **Implemented** — reports absence, never raises, never permits an audit request |
-| F-04 | `acquisition/declaration.py` (normalisation, M3A); `backend/app/db/repositories/snapshot_repo.py` (loading, M3B) | M3A/M3B | **Partially implemented** — normalisation done and tested; database loading deferred pending D-1 |
-| F-05 | `acquisition/policy_document.py` (M3A); snapshot path resolution (M3B) | M3A/M3B | **Partially implemented** — filesystem load and hash verification done and tested |
+| F-04 | `acquisition/declaration.py` (M3A); `backend/app/db/repositories/snapshot_repo.py` (M3B) | M3A/M3B | **Implemented** — normalisation and database round trip. Returns `None`, never an empty declaration, when the section was not read |
+| F-05 | `acquisition/policy_document.py` (M3A); `snapshot_repo.load_policy_document` (M3B) | M3A/M3B | **Implemented** — path resolution and SHA-256 re-verification on every load; a changed document is refused |
 | F-06 | `acquisition/gateway.py`, `acquisition/adapters.py` | M3A | **Partially implemented** — gateway, rate limiting, caching, error handling done and tested. **Never run against a live source** |
-| F-07 | `acquisition/provenance.py` | M3A/M3B | **Partially implemented** — representation done and tested; persistence deferred pending D-1 |
+| F-07 | `acquisition/provenance.py` (M3A); `snapshot_repo.record_collection_event` (M3B) | M3A/M3B | **Implemented** — one collection event per record, `status` derived from what was captured, previous event superseded not overwritten |
 | F-08 | `analysis/text/extractor.py` | M4 | Implemented and verified |
 | F-09 | `analysis/text/segmenter.py` | M4 | Implemented and verified |
 | F-10 | `analysis/text/validator.py` | M4 | Implemented and verified |

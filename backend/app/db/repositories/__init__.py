@@ -11,11 +11,25 @@ from app.db.repositories.application_repo import (
     UnknownApplicationReport,
     handle_unknown_application,
 )
+from app.db.repositories.snapshot_repo import (
+    LoadedPolicyDocument,
+    PolicyDocumentUnavailableError,
+    SnapshotNotFoundError,
+    SnapshotRepository,
+    SnapshotSummary,
+    derive_status,
+)
 
 __all__ = [
     "ApplicationDetail",
     "ApplicationRepository",
     "ApplicationSummary",
+    "LoadedPolicyDocument",
+    "PolicyDocumentUnavailableError",
+    "SnapshotNotFoundError",
+    "SnapshotRepository",
+    "SnapshotSummary",
     "UnknownApplicationReport",
+    "derive_status",
     "handle_unknown_application",
 ]
