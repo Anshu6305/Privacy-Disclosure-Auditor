@@ -769,3 +769,67 @@ Tests: `test_acquisition_declaration.py` (13), `test_acquisition_policy.py`
 - No database work. F-01, F-02, F-03 and the database halves of F-04, F-05
   and F-07 are M3B, pending D-1.
 - M4, M5, M6 not started.
+
+---
+
+## 2026-11-05 — Milestone 4: policy text processing (T2)
+
+F-08, F-09 and F-10. No database, no API, no M3A interface changed.
+
+### Built
+
+`analysis/text/` — `models.py`, `extractor.py` (F-08), `segmenter.py` (F-09),
+`validator.py` (F-10), `pipeline.py` (T2 end to end). Tests:
+`test_text_extraction.py` (24), `test_text_segmentation.py` (23),
+`test_text_analysability.py` (31).
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pytest tests` | **345 passed, 29 skipped** |
+| M4 tests only | **78 passed, 0 skipped** |
+| `ruff check .` | All checks passed |
+| Sample pipeline run | 628-byte fixture → 495 chars cleaned → 12 segments, all slice-verified → analysable, 85 tokens |
+
+The 29 skips are the PostgreSQL suite, which skips without
+`TEST_DATABASE_URL`. Nothing in M4 was skipped.
+
+### Decisions worth recording
+
+- **Offsets index F-08's cleaned text**, which follows from Phase 3 defining
+  F-09's input as that text. Raw-HTML offsets were considered and rejected;
+  they would need a character map through tag stripping, entity decoding,
+  normalisation and whitespace collapsing, which the approved design does not
+  call for.
+- **The cleaned text is stored** at `processed/<source-sha256>.txt`, because
+  an offset is worthless without the document it counts characters in, and
+  F-25 needs one to highlight.
+- **No fallback sentence splitter.** A different splitter would move sentence
+  boundaries, so the same policy would produce different evidence offsets on
+  different machines.
+- **spaCy moved to the base requirements.** F-09 needs it for the baseline
+  pipeline, and a baseline-only install could not previously segment a policy.
+
+### Found while building
+
+- **Single newlines survived into segment text.** In HTML a source newline
+  renders as a space, so one surviving into a quoted sentence would be a line
+  break the policy never had. Found by reading the extractor's actual output
+  on the fixture rather than by a failing test. Now collapsed to a space,
+  while paragraph breaks are preserved.
+- **spaCy 3.8.3 needed `click`** which did not arrive with the pinned install
+  in this environment. Noted in case a team member hits the same.
+
+### Deliberately not done
+
+No database persistence, no new tables, no migration, no API endpoint, no
+worker integration, no scraping, no classifier, no span extraction, no
+alignment, no verdict-engine change, no frontend. M5, M6 and M3B not started.
+
+### Limitation that matters most
+
+**No real privacy policy has ever been processed.** Every document in the
+suite is an invented fixture, and the operational corpus is still 0 of 300–500.
+Real policies are far messier, and extraction will need adjustment once some
+exist.

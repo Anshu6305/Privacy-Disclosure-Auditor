@@ -823,3 +823,98 @@ which was deferred pending D-1. The domain layer already distinguishes all
 four through `Provenance.outcome` and
 `DataSafetyDeclaration.declares_no_data_collected`; only the persistent column
 is outstanding.
+
+---
+
+## Milestone 4 — 2026-11-05
+
+### C-42 Offsets index the cleaned text, as the approved design implies
+
+**Approved design:** Phase 3 defines F-09's input as the cleaned text F-08
+produces, and §10.4 records that the segmented text is stored so the pipeline
+never depends on the raw files.
+
+**What happened:** Offsets index F-08's cleaned plain text. That is the
+canonical coordinate base and is stated in the module docstrings, the
+traceability document and the M4 report. **No offset refers to raw HTML**, and
+nothing was changed about what an offset means.
+
+Offsets into the raw document were considered and rejected: they would require
+a character-level map maintained through tag stripping, entity decoding,
+Unicode normalisation and whitespace collapsing, which the approved design
+does not call for.
+
+**Enforcement:** `PolicySegment` refuses construction unless its offsets span
+exactly its text, and every offset test verifies by slicing the real string
+rather than by trusting an arithmetic relation.
+
+**Status:** consistent.
+
+### C-43 Extraction is conservative by design
+
+**Approved design:** F-08 strips markup, navigation, scripts and boilerplate.
+
+**What happened:** Only structural chrome is removed — scripts, styles,
+navigation, headers, footers, forms and comments — with a count returned so
+the discarding can be audited. **Nothing is removed for looking repetitive.**
+
+Privacy policies repeat themselves by nature, and a cleaner that judged
+content by similarity would delete the clauses the audit exists to find. A
+test asserts six identical sentences all survive. Headings, definitions,
+exceptions and list items are retained because each can carry a data practice.
+
+The consequence is accepted and recorded: cookie-banner and consent text
+inside ordinary paragraphs is retained, because distinguishing it from policy
+prose reliably would need the classifier that has not been built.
+
+**Status:** consistent, with the trade-off stated.
+
+### C-44 No fallback sentence splitter
+
+**Approved design:** F-09 uses spaCy sentence boundaries.
+
+**What happened:** When spaCy or its model is absent, F-09 raises with
+installation instructions instead of falling back to a simpler splitter.
+
+**Why:** a fallback would place sentence boundaries differently, so the same
+policy would segment differently depending on what happened to be installed.
+Two team members would then get different evidence offsets for the same
+document, which NFR-08 does not permit. The model is pinned for the same
+reason.
+
+**Status:** consistent, and stronger than the design required.
+
+### C-45 spaCy moved to the base requirements
+
+**What happened:** spaCy was in `backend/requirements-ml.txt`, the ~2 GB set,
+but F-09 needs it for the **baseline** pipeline — text must be segmented
+before any classifier runs — so a baseline-only install could not have
+segmented a policy. Moved to `backend/requirements.txt`. The 2 GB in the ML
+file is torch, not spaCy.
+
+**Status:** dependency correction. No design or requirement change.
+
+### C-46 Analysability thresholds are provisional and labelled
+
+**Approved design:** F-10 compares segment count and total token count
+"against a configured minimum". Phase 2 and Phase 3 set no numbers.
+
+**What happened:** `min_segments = 1` and `min_tokens = 50` are proposed as
+**provisional**, labelled as such in the dataclass docstring, in
+`config.py`, in `.env.example`, in the traceability document and in the M4
+report. They are not reported as approved requirements anywhere.
+
+They are never applied silently: `validate_analysability` raises when no
+thresholds are given, and the provisional values require an explicit
+`allow_provisional=True`. A configuration that is missing a key, carries a
+non-integer or sets a value below 1 is rejected, because a threshold of zero
+would accept an empty document.
+
+**Basis for the numbers:** the shortest genuine policy in OPP-115 is
+`988_solarviews.com`, 703 characters in one segment, inspected directly during
+Milestone 1. The thresholds sit below it so a real short policy is still
+analysed while an error page is not. They should be revisited once the
+operational corpus exists.
+
+**Status:** consistent, with the provisional status recorded everywhere the
+values appear.

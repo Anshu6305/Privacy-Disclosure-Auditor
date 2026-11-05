@@ -28,7 +28,7 @@ Faculty Guide: _[to be filled in]_
 | M2 Database and schema | R5 | **Implemented and verified** | 16 tables. 189 tests on SQLite, **29 on PostgreSQL 16, all passing**. Class E omissions restored; **7 class D deviations against Phase 3 §10.2 still await a ruling** |
 | M3A Acquisition layer and corpus format | R2 | **Complete** | 70 tests. Offline-first; **never run live**, no application collected |
 | M3B Acquisition persistence | R2, R5 | **Blocked** | Needs the D-1 decision before any snapshot can be written |
-| M4 Text processing | R3 | **Not started** | No external dependency; can start once audit corrections are settled |
+| M4 Text processing | R3 | **Complete** | F-08, F-09, F-10; 78 tests. Offsets index the cleaned text and are slice-verified |
 | M5 Baseline ML | R3 | **Ready, not started** | OPP-115 in place and verified: 115 policies, 23,194 practices, 77,906 usable spans |
 | M6 Improved ML | R1, R3 | **Blocked** | Option A decided (D-01). Needs 300-500 labelled pairs and the gold set; neither exists |
 | M7 Verdict and evidence engine | R1 | **Core complete at unit-test level** | F-14, F-16, F-17, F-20, F-21, F-22 complete. **F-19 partial** — verdict confidence missing (audit E-5). **F-15 mechanism only** — no mapping rules authored. F-18 excluded, stays in M6 |

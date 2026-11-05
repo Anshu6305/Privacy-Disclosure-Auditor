@@ -50,6 +50,15 @@ class Settings(BaseSettings):
     # image; absent during development, where Vite serves the SPA on port 5173.
     static_dir: Path | None = None
 
+    # --- Analysability thresholds (F-10) ---
+    #
+    # PROVISIONAL. Phase 2 and Phase 3 require the comparison and name the two
+    # quantities but set no numbers; these are the project's own proposal and
+    # are not an approved requirement. Reasoning in
+    # docs/M4_TEXT_PROCESSING_REPORT.md.
+    min_policy_segments: int = 1
+    min_policy_tokens: int = 50
+
     # --- Analysis thresholds (ALG-4) ---
     # Placeholders until tuned on the gold set in Milestone 6. They are
     # configuration, not measured results, and are recorded per audit run in

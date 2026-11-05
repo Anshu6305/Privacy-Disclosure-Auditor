@@ -14,5 +14,6 @@ transformers==4.47.1
 tokenizers==0.21.0
 datasets==3.2.0
 accelerate==1.2.1
-spacy==3.8.3
 seqeval==1.2.2
+
+# spacy moved to requirements.txt: F-09 needs it for the baseline pipeline.

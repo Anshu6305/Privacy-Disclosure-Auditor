@@ -18,6 +18,13 @@ addopts = "-q --strict-markers"
 # future release. Set explicitly so the suite behaves the same before and
 # after that change.
 asyncio_default_fixture_loop_scope = "function"
+
+# Only third-party deprecations we cannot fix are silenced, named
+# individually so our own warnings stay visible.
+filterwarnings = [
+    "ignore:The 'strip_cdata' option:DeprecationWarning",
+    "ignore:Importing 'parser.split_arg_string':DeprecationWarning",
+]
 markers = [
     "integration: requires a running PostgreSQL instance",
     "ml: requires model weights or the ML dependency set",

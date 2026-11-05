@@ -27,6 +27,19 @@ scipy==1.14.1
 joblib==1.4.2
 pandas==2.2.3
 
+# --- Sentence segmentation (F-09) ---
+#
+# spaCy is here, not in requirements-ml.txt, because F-09 needs it for the
+# baseline pipeline: text has to be segmented before any classifier runs. It
+# is small without the transformer extras — the 2 GB in requirements-ml.txt
+# is torch, not this.
+#
+# The model is a separate download and is NOT installed by pip:
+#     python -m spacy download en_core_web_sm
+# It is pinned in analysis/text/segmenter.py because a different model places
+# sentence boundaries differently, which would change every evidence offset.
+spacy==3.8.3
+
 # --- Utilities ---
 python-dotenv==1.0.1
 httpx==0.28.1

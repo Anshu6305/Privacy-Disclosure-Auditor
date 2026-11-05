@@ -191,9 +191,9 @@ Milestone 1 except F-26 above.
 | F-05 | `acquisition/policy_document.py` (M3A); snapshot path resolution (M3B) | M3A/M3B | **Partially implemented** — filesystem load and hash verification done and tested |
 | F-06 | `acquisition/gateway.py`, `acquisition/adapters.py` | M3A | **Partially implemented** — gateway, rate limiting, caching, error handling done and tested. **Never run against a live source** |
 | F-07 | `acquisition/provenance.py` | M3A/M3B | **Partially implemented** — representation done and tested; persistence deferred pending D-1 |
-| F-08 | `analysis/text/extractor.py` | M4 | Not implemented |
-| F-09 | `analysis/text/segmenter.py` | M4 | Not implemented |
-| F-10 | `analysis/text/validator.py` | M4 | Not implemented |
+| F-08 | `analysis/text/extractor.py` | M4 | Implemented and verified |
+| F-09 | `analysis/text/segmenter.py` | M4 | Implemented and verified |
+| F-10 | `analysis/text/validator.py` | M4 | Implemented and verified |
 | F-11 | `analysis/models/practice_classifier.py` | M5, M6 | Not implemented |
 | F-12 | `analysis/models/span_extractor.py` | M6 | Not implemented |
 | F-13 | `analysis/models/variant.py` | M6 | Not implemented |
@@ -280,3 +280,43 @@ M8 and M9.
 
 The project database `privacy_auditor` is still empty and was not touched;
 everything ran against `privacy_auditor_test`.
+
+---
+
+## Milestone 4 — Text processing (T2)
+
+| Requirement | Function | Code | Test | Status |
+|---|---|---|---|---|
+| FR-08 | F-08 extractPolicyText | `analysis/text/extractor.py` | `test_text_extraction.py` (24) | Implemented and verified |
+| FR-09 | F-09 segmentPolicyText | `analysis/text/segmenter.py` | `test_text_segmentation.py` (23) | Implemented and verified |
+| FR-10 | F-10 validateAnalysability | `analysis/text/validator.py` | `test_text_analysability.py` (31) | Implemented and verified |
+| ALG-1 | F-08 + F-09 | both | the above | Implemented, O(n) single pass |
+| T2 end to end | F-05→F-08→F-09→F-10 | `analysis/text/pipeline.py` | 6 tests | Implemented and verified |
+
+### The offset guarantee
+
+Offsets index the **cleaned plain text produced by F-08**, which is the
+canonical coordinate base. This follows from the approved design: Phase 3
+defines F-09's input as F-08's cleaned text. No offset refers to raw HTML.
+
+| Property | Test |
+|---|---|
+| Offsets locate the exact text, by slicing the real string | `test_offsets_locate_the_exact_text_by_slicing` |
+| Every non-whitespace character is in exactly one segment | `test_no_sentence_is_lost_or_duplicated` |
+| Segments are ordered and do not overlap | `test_segments_are_ordered_and_do_not_overlap` |
+| Text is never altered | `test_text_is_never_altered` |
+| A wrong offset cannot be constructed | `test_segment_rejects_offsets_that_do_not_match_its_text` |
+| The offset checker catches a deliberate fault | `test_verify_segments_detects_a_broken_offset` |
+| Offsets survive the whole pipeline | `test_pipeline_offsets_index_the_cleaned_text` |
+| The cleaned text is stored for F-25 highlighting | `test_cleaned_text_is_written_for_later_highlighting` |
+
+### Provisional values introduced
+
+| Value | Setting | Status |
+|---|---|---|
+| `min_segments` = 1 | `MIN_POLICY_SEGMENTS` | **Provisional**, not an approved requirement |
+| `min_tokens` = 50 | `MIN_POLICY_TOKENS` | **Provisional**, not an approved requirement |
+| `max_segment_chars` = 1000 | per call | **Provisional**, tied to an unmade encoder choice |
+
+Phase 2 and Phase 3 require the comparison and name the quantities but set no
+numbers. Reasoning in `docs/M4_TEXT_PROCESSING_REPORT.md` section 7.
