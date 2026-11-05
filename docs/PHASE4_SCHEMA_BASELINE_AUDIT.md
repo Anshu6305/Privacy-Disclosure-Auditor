@@ -956,7 +956,7 @@ ruling and a correction to the report, not a code change.
 | ID | Issue | Effect |
 |---|---|---|
 | **DOC-1** | §10.3 says `audit_run` has "seven foreign keys"; §10.2 lists six, and the prose's own arithmetic gives six | The implementation has seven only because of D-1. Resolving D-1 settles this |
-| **DOC-2** | §10.2 leaves `evidence_record.sentence_text` unmarked, which by its own rule means NOT NULL, while the same row's note says offsets are null for absence records | Drove D-7. The report should mark it nullable |
+| ~~**DOC-2**~~ | ~~§10.2 leaves `evidence_record.sentence_text` unmarked, which by its own rule means NOT NULL, while the same row's note says offsets are null for absence records~~ | **WITHDRAWN 2026-11-05.** The note nulls `segment_id` and the offsets, not the text. F-21 requires the absence record to store a generated statement, so NOT NULL is coherent and there is no contradiction |
 
 ## Consistency log correction
 
@@ -978,7 +978,13 @@ and documentation updates.
 2. Approve the class E restorations, individually or as a block.
 3. Decide D-1 first. It is the largest, and D-2, DOC-1 and E-2 all depend on it.
 4. Rule on D-2 through D-10, or defer any of them with a recorded reason.
-5. Take DOC-1 and DOC-2 to the faculty guide, since they are defects in an
-   approved report.
+5. Take DOC-1 to the faculty guide, since it is a defect in an approved
+   report. DOC-2 was withdrawn on 2026-11-05 and needs no ruling.
+
+**Note, 2026-11-05.** This register is superseded by
+`docs/PHASE4_DECISION_TABLE.md`, which carries the revised assessment after
+the team challenged D-2, D-6, D-7 and DOC-2. The entries above are annotated
+in place rather than deleted so the original reasoning and its correction both
+remain on the record.
 
 I will implement nothing from this document until you say so.
