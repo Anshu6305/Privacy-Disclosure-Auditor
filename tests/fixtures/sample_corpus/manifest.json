@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "corpus": "operational Android application corpus",
+  "note": "This is NOT OPP-115. OPP-115 is a corpus of website privacy policies used to train the classifier and lives in data/raw/opp115.",
+  "generated_at": "2026-11-05T05:56:01+00:00",
+  "application_count": 1,
+  "analysable_count": 1,
+  "applications": [
+    {
+      "package_name": "com.example.sampleapp",
+      "app_name": "Sample App (fixture, not a real application)",
+      "has_declaration": true,
+      "has_policy": true,
+      "policy_sha256": "410a3d4022b3df214f4998f963b008678229c551f177effdde6581e33e213af0",
+      "collected_at": "2026-11-05T10:00:00+00:00",
+      "validation_status": "fixture"
+    }
+  ]
+}

@@ -132,7 +132,8 @@ Milestones follow the approved Phase 3 WBS. Dependencies are real, not arbitrary
 |---|---|---|
 | M1 Repository and environment | — | No |
 | M2 Database and backend foundation | M1 | No |
-| M3 Acquisition and offline corpus | M2 | Yes — Play Store access |
+| M3A Acquisition layer and corpus format | M2 | No — offline-first by design |
+| M3B Acquisition persistence | M3A, **D-1 decision** | Yes — needs the snapshot design |
 | M4 Text processing (F-08 to F-10) | M2 | No (synthetic fixtures usable) |
 | M5 Baseline ML (F-11 baseline) | M4 | Yes — OPP-115 |
 | M6 Improved ML (F-11, F-12, F-18) | M5 | Yes — models, OPP-115, PolicyIE, alignment labels |
@@ -263,7 +264,7 @@ Names stay as placeholders until the team supplies them. Roles follow Phase 3 Se
 | Role | Area | Functions owned |
 |---|---|---|
 | R1 [Member] | Design coordination and alignment | F-15 to F-18, taxonomy artefact |
-| R2 [Member] | Data engineering and corpus | F-01 to F-07, corpus collection |
+| R2 [Member] | Data engineering and corpus | F-01 to F-07, corpus collection (M3A built; collection not started) |
 | R3 [Member] | NLP and classification | F-08 to F-14 |
 | R4 [Member] | Backend and integration | F-23, F-32 to F-34, E1-E11 |
 | R5 [Member] | Database and persistence | 16 tables, migrations, F-28 to F-30 |

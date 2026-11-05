@@ -1,0 +1,87 @@
+{
+  "schema_version": "1.0",
+  "package_name": "com.example.sampleapp",
+  "app_name": "Sample App (fixture, not a real application)",
+  "developer_name": "Example Developer",
+  "store_category": "Tools",
+  "play_store_url": "https://play.google.com/store/apps/details?id=com.example.sampleapp",
+  "policy_url": "https://example.invalid/privacy",
+  "policy_path": "raw/policies/410a3d4022b3df214f4998f963b008678229c551f177effdde6581e33e213af0.html",
+  "policy_sha256": "410a3d4022b3df214f4998f963b008678229c551f177effdde6581e33e213af0",
+  "collected_at": "2026-11-05T10:00:00+00:00",
+  "declaration": {
+    "package_name": "com.example.sampleapp",
+    "declares_no_data_collected": false,
+    "entries": [
+      {
+        "category": "Personal info",
+        "data_type": "Email address",
+        "collected": true,
+        "shared": false,
+        "purposes": [
+          "App functionality"
+        ],
+        "optional": false,
+        "ephemeral": null,
+        "raw_label": "Email address"
+      },
+      {
+        "category": "Contacts",
+        "data_type": "Contacts",
+        "collected": true,
+        "shared": true,
+        "purposes": [
+          "Advertising or marketing"
+        ],
+        "optional": true,
+        "ephemeral": null,
+        "raw_label": "Contacts"
+      },
+      {
+        "category": "Location",
+        "data_type": "Precise location",
+        "collected": true,
+        "shared": false,
+        "purposes": [
+          "App functionality"
+        ],
+        "optional": false,
+        "ephemeral": null,
+        "raw_label": "Precise location"
+      }
+    ],
+    "security": {
+      "encrypted_in_transit": true,
+      "deletion_available": false,
+      "independent_security_review": null,
+      "play_families_policy": null
+    }
+  },
+  "provenances": [
+    {
+      "source_type": "data_safety",
+      "source_url": "https://play.google.com/store/apps/datasafety?id=com.example.sampleapp",
+      "retrieved_at": "2026-11-05T10:00:00+00:00",
+      "retrieval_mode": "manual_import",
+      "outcome": "success",
+      "content_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "content_bytes": null,
+      "http_status": null,
+      "failure_reason": null,
+      "collector_note": "FIXTURE: invented data, never retrieved"
+    },
+    {
+      "source_type": "privacy_policy",
+      "source_url": "https://example.invalid/privacy",
+      "retrieved_at": "2026-11-05T10:00:00+00:00",
+      "retrieval_mode": "manual_import",
+      "outcome": "success",
+      "content_sha256": "410a3d4022b3df214f4998f963b008678229c551f177effdde6581e33e213af0",
+      "content_bytes": 628,
+      "http_status": null,
+      "failure_reason": null,
+      "collector_note": "FIXTURE: invented data, never retrieved"
+    }
+  ],
+  "validation_status": "fixture"
+}

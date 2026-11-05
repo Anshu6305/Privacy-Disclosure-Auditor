@@ -26,7 +26,8 @@ Faculty Guide: _[to be filled in]_
 |---|---|---|---|
 | M1 Repository and environment | all | **Complete** | Verified on two machines; Python 3.12 on the team Mac. Docker not yet installed |
 | M2 Database and schema | R5 | **Implemented and verified** | 16 tables. 189 tests on SQLite, **29 on PostgreSQL 16, all passing**. Class E omissions restored; **7 class D deviations against Phase 3 §10.2 still await a ruling** |
-| M3 Acquisition and offline corpus | R2 | **Blocked** | Needs Play Store collection on a team machine; scraper library unmaintained |
+| M3A Acquisition layer and corpus format | R2 | **Complete** | 70 tests. Offline-first; **never run live**, no application collected |
+| M3B Acquisition persistence | R2, R5 | **Blocked** | Needs the D-1 decision before any snapshot can be written |
 | M4 Text processing | R3 | **Not started** | No external dependency; can start once audit corrections are settled |
 | M5 Baseline ML | R3 | **Ready, not started** | OPP-115 in place and verified: 115 policies, 23,194 practices, 77,906 usable spans |
 | M6 Improved ML | R1, R3 | **Blocked** | Option A decided (D-01). Needs 300-500 labelled pairs and the gold set; neither exists |
@@ -63,3 +64,22 @@ Faculty Guide: _[to be filled in]_
 5. Confirm free-tier GPU access for the three training runs.
 6. Check PolicyIE and PI-Extract licence terms.
 7. Provide member names to replace the placeholders above.
+
+---
+
+## Operational corpus collection — not started
+
+This is the **Android application corpus**, not OPP-115.
+
+| Item | Target | Actual |
+|---|---|---|
+| Applications collected | 300–500 | **0** |
+| Pilot applications | ~20 | **0** |
+| Gold-set applications annotated | ~100 | **0** |
+| Live retrievals performed | — | **0** |
+
+The format, the validation tool and the import procedure exist and are
+tested. The collecting has not begun. One invented fixture record demonstrates
+the format; it is not an application.
+
+Procedure: `docs/M3_ACQUISITION_REPORT.md` section 10.

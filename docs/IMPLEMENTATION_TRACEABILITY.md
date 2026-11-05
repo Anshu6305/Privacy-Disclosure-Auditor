@@ -184,13 +184,13 @@ Milestone 1 except F-26 above.
 
 | F-id | Planned module | Milestone | Status |
 |---|---|---|---|
-| F-01 | `backend/app/db/repositories/application_repo.py` | M8 | Not implemented |
+| F-01 | `backend/app/db/repositories/application_repo.py` | M3B | Not implemented — database-backed, pending D-1 |
 | F-02 | `backend/app/services/audit_service.py` | M8 | Not implemented |
-| F-03 | `backend/app/db/repositories/application_repo.py` | M8 | Not implemented |
-| F-04 | `backend/app/db/repositories/snapshot_repo.py` | M2 | Not implemented |
-| F-05 | `backend/app/db/repositories/snapshot_repo.py` | M2 | Not implemented |
-| F-06 | `acquisition/play_store_adapter.py` | M3 | Blocked — Play Store unreachable from the authoring environment |
-| F-07 | `acquisition/provenance.py` | M3 | Not implemented |
+| F-03 | `backend/app/db/repositories/application_repo.py` | M3B | Not implemented — database-backed, pending D-1 |
+| F-04 | `acquisition/declaration.py` (normalisation, M3A); `backend/app/db/repositories/snapshot_repo.py` (loading, M3B) | M3A/M3B | **Partially implemented** — normalisation done and tested; database loading deferred pending D-1 |
+| F-05 | `acquisition/policy_document.py` (M3A); snapshot path resolution (M3B) | M3A/M3B | **Partially implemented** — filesystem load and hash verification done and tested |
+| F-06 | `acquisition/gateway.py`, `acquisition/adapters.py` | M3A | **Partially implemented** — gateway, rate limiting, caching, error handling done and tested. **Never run against a live source** |
+| F-07 | `acquisition/provenance.py` | M3A/M3B | **Partially implemented** — representation done and tested; persistence deferred pending D-1 |
 | F-08 | `analysis/text/extractor.py` | M4 | Not implemented |
 | F-09 | `analysis/text/segmenter.py` | M4 | Not implemented |
 | F-10 | `analysis/text/validator.py` | M4 | Not implemented |

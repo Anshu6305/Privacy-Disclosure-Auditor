@@ -764,3 +764,62 @@ specifications in §4.2 that govern the same structures.
 restorations, two implementation deviations, one document correction and two
 withdrawals, where the first edition claimed six changes and three amendments
 to the approved design.
+
+---
+
+## Milestone 3A — 2026-11-05
+
+### C-38 Acquisition built without touching the database
+
+**Constraint:** D-1 is unresolved, so M3A had to proceed without choosing
+between a per-collection-event and a per-source snapshot.
+
+**What happened:** No SQLAlchemy model, Alembic migration or database was
+touched. The acquisition layer produces plain frozen dataclasses with no
+database dependency, and **provenance is recorded per source document** — the
+smaller unit, from which either D-1 arrangement can be assembled. No
+persistent snapshot schema was introduced.
+
+**Status:** consistent. F-01, F-02, F-03 and the database halves of F-04, F-05
+and F-07 are deferred to M3B.
+
+### C-39 Retrieval is optional, and the system does not depend on it
+
+**Approved design:** NFR-16 requires a single acquisition chokepoint; Phase 1
+requires a frozen offline corpus and names Play Store access the least
+reliable dependency.
+
+**What happened:** `AcquisitionGateway` with no adapter is the default and
+returns a recorded failure for every request. Audits read the corpus from
+disk. The rate limiter has a floor that cannot be configured away, only
+successes are cached, and a damaged cache entry is treated as a miss so the
+cache cannot break a run.
+
+**Status:** consistent.
+
+### C-40 Normalisation rules are provisional and labelled as such
+
+**What happened:** The Data Safety entry fields were taken from Google's own
+documentation — data type, collected and shared declared separately, purpose,
+optional flag, plus security and deletion statements. **No real page was
+inspected**: `play.google.com` is unreachable from the development environment
+and is not on the session allowlist.
+
+**Recorded honestly** rather than presented as settled. The report states the
+rules are provisional until a pilot runs, and the design confines any required
+change to one adapter file, per the Phase 1 risk finding.
+
+**Status:** consistent, with a stated limitation.
+
+### C-41 M3A produces input to the open E-2 decision
+
+Acquisition established that at least four states must be distinguishable for
+a disclosure source: section parsed with declarations; section parsed with an
+app-level no-collection declaration; section absent; fetch failed. The scraper
+documentation consulted warns specifically against conflating the last two.
+
+That is a concrete input to finding **E-2**, `disclosure_snapshot.status`,
+which was deferred pending D-1. The domain layer already distinguishes all
+four through `Provenance.outcome` and
+`DataSafetyDeclaration.declares_no_data_collected`; only the persistent column
+is outstanding.

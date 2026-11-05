@@ -712,3 +712,60 @@ Deliverable: `docs/PHASE4_DECISION_TABLE.md`, rewritten. The three superseded
 entries in `docs/PHASE4_SCHEMA_BASELINE_AUDIT.md` are annotated in place
 rather than deleted, so the original reasoning and its correction both remain
 on the record.
+
+---
+
+## 2026-11-05 — Milestone 3A: acquisition layer and offline corpus
+
+Built the acquisition layer and corpus format. **No database model, migration
+or database was touched.** No application was collected and no live retrieval
+was performed.
+
+### Built
+
+| File | Purpose |
+|---|---|
+| `acquisition/models.py` | Domain objects, no database dependency |
+| `acquisition/declaration.py` | F-04 normalisation |
+| `acquisition/policy_document.py` | F-05 loading and SHA-256 verification |
+| `acquisition/gateway.py` | F-06 gateway, rate limiter, cache |
+| `acquisition/adapters.py` | F-06 replaceable transports |
+| `acquisition/provenance.py` | F-07 provenance and append-only log |
+| `acquisition/corpus.py` | Corpus layout, manifest, validation |
+| `scripts/validate_corpus.py` | Validation CLI |
+| `tests/fixtures/sample_corpus/` | One **invented** sample record |
+| `docs/M3_ACQUISITION_REPORT.md` | The milestone report |
+
+Tests: `test_acquisition_declaration.py` (13), `test_acquisition_policy.py`
+(10), `test_acquisition_gateway.py` (21), `test_acquisition_corpus.py` (26).
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pytest tests` | **267 passed, 29 skipped** |
+| M3A tests only | **70 passed** |
+| `ruff check .` | All checks passed |
+| `scripts/validate_corpus.py --root tests/fixtures/sample_corpus` | RESULT: usable — 1 record, 1 analysable, 0 duplicates, 0 hash mismatches |
+
+### Found while building
+
+- **ruff was linting at py312 while `requires-python` allows 3.10.** It
+  suggested `datetime.UTC`, which is 3.11+ and would have broken the floor of
+  our own supported range. Target corrected to `py310`, the oldest supported
+  version.
+- **`record_from_dict` crashed with `AttributeError` on a JSON array**
+  instead of reporting a format error. Caught by a test written for exactly
+  that case; now raises `CorpusFormatError`.
+
+### Deliberately not done
+
+- No live retrieval. `play.google.com` is unreachable here and is not on the
+  session allowlist, so the adapter has never been exercised against a real
+  page. The normalisation rules rest on Google's documentation and are
+  labelled provisional.
+- No application collected. The sample record is invented;
+  `com.example.sampleapp` is not a real application.
+- No database work. F-01, F-02, F-03 and the database halves of F-04, F-05
+  and F-07 are M3B, pending D-1.
+- M4, M5, M6 not started.

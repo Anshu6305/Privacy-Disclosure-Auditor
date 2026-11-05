@@ -73,3 +73,26 @@ These need a faculty ruling and a correction to the report, not a code change.
 The missing `verdict.confidence` (audit E-5) is **not** listed above. Adding it
 restores the approved design rather than departing from it, so it needs no
 entry here. It is recorded in the consistency log as C-27.
+
+---
+
+## Milestone 3A — no change requested
+
+M3A introduced **no deviation** from the approved Phase 2 SRS or Phase 3
+design. No FR, NFR, GI or F-function identifier was altered, no database model
+or migration was touched, and no new persistent schema was created.
+
+Two things worth recording here even though neither is a change request:
+
+1. **The corpus record format is a new artefact, not a change.** Phase 3
+   specifies the database schema; it does not specify an on-disk corpus
+   format, because the corpus is an input to the system rather than part of
+   it. `record.json` schema version 1.0 is documented in
+   `docs/M3_ACQUISITION_REPORT.md` section 5.
+
+2. **The declaration normalisation rules are provisional.** They rest on
+   Google's published documentation, not on an inspected page. If the pilot
+   shows the published section carries fields the rules do not cover, or does
+   not carry fields they assume, that correction will be made in the adapter
+   and recorded here **only if** it affects an approved requirement. A change
+   to the corpus format alone does not.
