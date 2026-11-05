@@ -49,7 +49,8 @@ can run (§2.2).
 
 | Item | Status | What is outstanding |
 |---|---|---|
-| **C-53** pattern-class search indexes, revision `0002_pattern_ops` | **Implemented** | PostgreSQL catalogue operator classes, `EXPLAIN` eligibility, the combined-query plan, upgrade/downgrade on a disposable database, and the database collation. Commands in `docs/C53_RESOLUTION_NOTE.md` §10. **Not executed — environment limitation**, not skipped and not passed |
+| **C-53** pattern-class search indexes, revision `0002_pattern_ops` | **Partly verified** | **Done 2026-11-05:** operator classes (`text_pattern_ops` on both new, `text_ops` retained on both original), collation `en_US.utf8`, upgrade to `0002_pattern_ops`. **Outstanding:** downgrade and re-upgrade, the re-run proving the skip gate fires, and `EXPLAIN` eligibility. Re-run `bash scripts/verify_c53.sh` |
+| **C-56** a test asserted one migration revision | **Fixed** | Replaced by four ancestry-based tests from Alembic's revision graph, covering both migration states. Needs the PostgreSQL re-run to execute |
 
 ### Established facts, for reference
 
@@ -79,11 +80,13 @@ working. Recorded plainly so the viva answer is the same as the tracker:
 | Taxonomy mapping rules (F-15) | **None authored.** The lookup mechanism works; it has nothing to look up |
 | Thresholds | All provisional at 0.50, uncalibrated |
 
-Tests: **461 passed, 53 skipped** on SQLite, where the 53 skips are the
-PostgreSQL-only tests. **43 of those passed against PostgreSQL 16** on
-`privacy_auditor_frozen_20261105_test`, 2026-11-05 — 29 schema, 14 F-01
-search. The **10 C-53 tests have not been run against a server** and need a
-database upgraded to `0002_pattern_ops`.
+Tests: **461 passed, 56 skipped** on SQLite, where the 56 skips are the
+PostgreSQL-only tests. **43 passed against PostgreSQL 16** on
+`privacy_auditor_frozen_20261105_test`, 2026-11-05. On a disposable database
+upgraded to `0002_pattern_ops`, **52 of 53 then-existing tests passed** and the
+one failure was a defective test, not the schema (C-56, now fixed). The
+operator classes and the collation `en_US.utf8` are **verified**; the
+downgrade, re-upgrade and `EXPLAIN` checks are **not yet executed**.
 
 The schema now has **two migrations**: the frozen `0001_baseline` and the
 additive `0002_pattern_ops`. `privacy_auditor` is still at neither.

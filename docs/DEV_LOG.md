@@ -1628,3 +1628,107 @@ pattern is git-ignored.
 
 **C-53 is still Implemented, not verified.** Nothing in this entry ran against
 PostgreSQL.
+
+---
+
+## 2026-11-05 — C-53 partly verified on PostgreSQL; C-56: a test that broke on its own success
+
+### Verified on PostgreSQL 16, team Mac
+
+| Check | Result |
+|---|---|
+| `ix_application_lower_name_pattern` | **`text_pattern_ops`** |
+| `ix_application_lower_package_pattern` | **`text_pattern_ops`** |
+| `ix_application_lower_name` | `text_ops`, retained |
+| `ix_application_lower_package` | `text_ops`, retained |
+| Collation | **`en_US.utf8`** |
+
+The collation matters more than it looks. C-53's premise was that the database
+is not `C` or `POSIX`, which I had **deduced** from the absence of an index
+condition rather than measured. `en_US.utf8` confirms it directly, so the
+finding now rests on a measurement.
+
+The correction itself is confirmed at the catalogue level: the operator class
+reached the index, which is the failure mode the note warned about.
+
+### C-56 — the one failing test was the test
+
+52 of 53 passed. `test_alembic_baseline_has_been_applied` asserted
+`version_num == "0001_baseline"`, so a **correctly** upgraded database at
+`0002_pattern_ops` failed it.
+
+The defect is a category error I wrote in M2: the test asserted an exact
+migration state when its subject is "was the approved schema ever applied".
+Those are different questions, and only the second stays true as migrations
+accumulate. It was guaranteed to break the first time the schema moved, which
+is exactly what happened.
+
+**Fixed with four tests derived from Alembic's own revision graph**
+(`ScriptDirectory`), so no revision identifier is hard-coded beyond the
+baseline:
+
+1. `test_alembic_baseline_is_in_the_applied_ancestry` — `0001_baseline` is in
+   the ancestry of whatever is recorded. True at the baseline, at
+   `0002_pattern_ops`, and at any later revision.
+2. `test_applied_revision_lies_on_the_path_from_head_to_base` — the recorded
+   revision is known here and reachable from head. Catches a database and a
+   checkout that have diverged, which ancestry alone cannot.
+3. `test_pattern_indexes_match_the_applied_revision` — **the both-states
+   coverage.** It derives the expectation from the recorded revision, then
+   reads `pg_opclass`: at `0002_pattern_ops` both indexes must exist with
+   `text_pattern_ops`; at the baseline neither may exist. A migration applied
+   or reverted without its DDL taking effect fails here.
+4. `test_the_baseline_functional_indexes_exist_in_every_state` — C-53 is
+   additive, so the original pair is present at every revision.
+
+Plus `applied_revision`, which asserts `alembic_version` holds **exactly one**
+row rather than silently taking the first of several.
+
+**Nothing was removed or weakened.** The old test checked one string; the
+replacement checks ancestry, reachability, single-headedness, and agreement
+between `alembic_version` and the real catalogue **in both directions**.
+
+The graph logic needs no database, so it was exercised here rather than
+assumed: ancestry of `0002_pattern_ops` is
+`['0001_baseline', '0002_pattern_ops']`; ancestry of `0001_baseline` is
+`['0001_baseline']`; head is `0002_pattern_ops`; an unknown identifier is not
+reachable.
+
+### Counts changed
+
+Integration tests: 53 → **56** (32 schema + 24 search). Expected at
+`0002_pattern_ops`: **56 passed, 0 skipped**. After downgrade: **49 passed, 7
+skipped** — the 7 gated on the revision. The script's expectations were
+updated to match; stale numbers in a script are how a wrong result gets
+reported as right.
+
+### Databases
+
+Both earlier verification databases are preserved and **added to the script's
+`PROTECTED` list**, so neither can be targeted again:
+`privacy_auditor_c53_20261105_test` (hit the collision guard) and
+`privacy_auditor_c53_20261105b_test` (carried the measurements above). The new
+target is `privacy_auditor_c53_20261105c_test`. The guard was dry-run against a
+protected name and aborted as designed.
+
+Still no `DROP` anywhere in the script, and the three project databases remain
+untouched.
+
+### A slip of my own, worth recording
+
+While editing the script I used a string replacement without asserting that it
+matched, and it silently did nothing — the team had already changed
+`DISPOSABLE_DB` to `b_test` locally, so my pattern missed. I only noticed by
+re-reading the file afterwards. Re-applied with an assertion. Every edit script
+in this repository asserts its match before writing; this one did not, and that
+is the second time an unasserted assumption has cost a correction.
+
+### Verified
+
+`bash -n` clean. `ruff check .` → all checks passed. `pytest tests
+-p no:warnings` → **461 passed, 56 skipped**.
+
+**C-53 is still not fully verified.** Outstanding: the downgrade and
+re-upgrade, the re-run proving the skip gate fires, and the `EXPLAIN`
+eligibility diagnostic. The earlier run stopped at the failing test before
+reaching them.

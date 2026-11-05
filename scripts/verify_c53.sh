@@ -23,11 +23,20 @@
 #
 # Everything is also written to a log file, so the output can be pasted back
 # in full. Exit code 0 means every check passed.
+#
+# To re-run after a failure: the script never reuses a database, so add the
+# one from the failed run to PROTECTED above and move DISPOSABLE_DB to the
+# next free letter. Nothing is dropped and nothing is reused.
 
 set -euo pipefail
 
-DISPOSABLE_DB="privacy_auditor_c53_20261105_test"
-PROTECTED=("privacy_auditor" "privacy_auditor_test" "privacy_auditor_frozen_20261105_test")
+DISPOSABLE_DB="privacy_auditor_c53_20261105c_test"
+# Never a target. The first three are the project's own databases. The two c53
+# databases are earlier verification runs that the team asked to keep, so this
+# script must neither reuse nor disturb them: the "_test" run hit the collision
+# guard, the "b_test" run carried the 2026-11-05 measurements.
+PROTECTED=("privacy_auditor" "privacy_auditor_test" "privacy_auditor_frozen_20261105_test"
+           "privacy_auditor_c53_20261105_test" "privacy_auditor_c53_20261105b_test")
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -111,7 +120,7 @@ pg postgres -c "SELECT datname FROM pg_database ORDER BY datname" || fail "could
 
 EXISTS="$(pg postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$DISPOSABLE_DB'" | tr -d '[:space:]')"
 if [[ "$EXISTS" == "1" ]]; then
-  fail "$DISPOSABLE_DB already exists. Nothing was changed. Choose another unused name (for example privacy_auditor_c53_20261105b_test) and re-run with DISPOSABLE_DB edited at the top of this script. Do not drop the existing one."
+  fail "$DISPOSABLE_DB already exists. Nothing was changed. Choose another unused name (the next free letter, for example privacy_auditor_c53_20261105d_test), add the existing one to PROTECTED, and re-run. Do not drop the existing one."
 fi
 ok "$DISPOSABLE_DB does not exist"
 
@@ -172,14 +181,14 @@ pg postgres -c "SELECT datname, datcollate, datctype FROM pg_database
   || fail "could not read the collation"
 
 # --- 9. Integration tests, revision applied -------------------------------
-step "9. Integration tests against the disposable database"
+step "9. Integration tests against the disposable database (56 expected)"
 TEST_DATABASE_URL="$("$PY" scripts/test_database_url.py "$DISPOSABLE_DB")" \
   || fail "could not compose TEST_DATABASE_URL"
 export TEST_DATABASE_URL
 
 "$PY" -m pytest tests/integration -p no:warnings -v \
   || fail "integration tests failed with 0002_pattern_ops applied"
-ok "integration tests passed (expected 53 passed, 0 skipped)"
+ok "integration tests passed (expected 56 passed, 0 skipped)"
 
 # --- 10. Downgrade --------------------------------------------------------
 step "10. Downgrade to the baseline, then re-check"
@@ -205,7 +214,7 @@ ok "both baseline indexes retained"
 step "10b. Integration tests with the revision removed - the gate must fire"
 "$PY" -m pytest tests/integration -p no:warnings \
   || fail "integration tests failed at the baseline"
-ok "passed with skips (expected 46 passed, 7 skipped)"
+ok "passed with skips (expected 49 passed, 7 skipped)"
 
 step "10c. Re-apply the revision"
 ( cd backend && POSTGRES_DB="$DISPOSABLE_DB" ../.venv/bin/alembic upgrade head ) \
@@ -223,8 +232,8 @@ Every automated check passed. Read these from the output above and report them:
 
   * step 7  - the four functional indexes and their operator classes
   * step 8  - datcollate, which is still unrecorded in the note
-  * step 9  - the pytest summary line (expected: 53 passed)
-  * step 10 - the downgrade, and the second summary (expected: 46 passed, 7 skipped)
+  * step 9  - the pytest summary line (expected: 56 passed, 0 skipped)
+  * step 10 - the downgrade, and the second summary (expected: 49 passed, 7 skipped)
   * step 11 - whether the two prefix LIKE rows now report "index used: yes"
 
 enable_seqscan is off in step 11, which establishes index ELIGIBILITY only.

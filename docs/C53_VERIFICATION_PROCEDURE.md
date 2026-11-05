@@ -9,7 +9,9 @@ is not reachable from a development session
 locally and their output reported back. Until then C-53 is **Implemented**, not
 **Tested and verified**.
 
-Run every command from the repository root, in one terminal session, in order.
+**`bash scripts/verify_c53.sh` now runs all of this.** This document remains
+the explanation of what each step checks and why; the script is what to
+execute. Run either from the repository root.
 
 ---
 
@@ -18,6 +20,7 @@ Run every command from the repository root, in one terminal session, in order.
 | # | Claim | Step |
 |---|---|---|
 | 1 | Both pattern indexes exist in the catalogue | 7 |
+| 0 | `0001_baseline` is in the applied ancestry, in **either** migration state | 9 |
 | 2 | Their expressions are `lower(app_name)` and `lower(package_name)` | 7 |
 | 3 | Their operator classes are actually `text_pattern_ops` | 7, 9 |
 | 4 | The two baseline indexes still exist, with `text_ops` | 7, 9 |
@@ -35,8 +38,8 @@ re-read, and had two errors that this document supersedes:
 - The service is **`database`**, not `db`. Every `docker compose exec` in the
   note would have failed. Step 1 confirms the name from the configuration
   rather than trusting either document.
-- Against the frozen database the expected result is **46 passed, 7 skipped**,
-  not 45 and 8. There are 53 integration tests (29 schema + 24 search), and
+- Against a database at the baseline the expected result is **49 passed, 7
+  skipped**. There are **56** integration tests (32 schema + 24 search), and
   **7** are gated on revision `0002_pattern_ops`.
 
 ## Safety
@@ -213,7 +216,7 @@ The first line prints nothing: the URL, password included, goes straight into
 the variable. The helper refuses any name that is protected or does not end in
 `_test`.
 
-**Expected: 53 passed, 0 skipped.** 29 schema + 24 search, the 7 gated tests
+**Expected: 56 passed, 0 skipped.** 32 schema + 24 search, the 7 gated tests
 now among them.
 
 A skip here means the URL did not reach the server, or `alembic_version` does
@@ -240,7 +243,7 @@ Confirm the two pattern indexes are gone and the two baseline indexes remain —
 re-run **step 7**. Expected: two functional indexes, both `text_ops`.
 
 Then re-run **step 9** against the disposable database. Expected now:
-**46 passed, 7 skipped**. The 7 skip because the revision is no longer applied.
+**49 passed, 7 skipped**. The 7 skip because the revision is no longer applied.
 
 Finally put it back:
 

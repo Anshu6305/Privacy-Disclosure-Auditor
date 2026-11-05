@@ -1026,8 +1026,18 @@ the `LIKE` is not.
 search changes, and on a corpus of 300 to 500 applications a sequential scan is
 not noticeable. It matters for NFR performance claims, not for results.
 
-**Status:** **confirmed; correction implemented as an additive migration;
-PostgreSQL verification outstanding.**
+**Status:** **confirmed; correction implemented; PostgreSQL verification
+part-complete.**
+
+**Measured on PostgreSQL 16, team Mac, 2026-11-05:** both pattern indexes
+report `text_pattern_ops`; both baseline indexes retain `text_ops`; the
+database collation is **`en_US.utf8`**. That collation is the condition C-53
+depends on — collation-aware, not `C` — so the premise is now confirmed by
+measurement rather than inferred from a missing index condition.
+
+**Outstanding:** the downgrade and re-upgrade checks, the re-run proving the
+skip gate fires, and the `EXPLAIN` eligibility diagnostic. The run stopped at a
+failing test before reaching them. See C-56.
 
 The diagnostic was run on the team Mac on 2026-11-05 against
 `privacy_auditor_frozen_20261105_test`. Both prefix `LIKE` queries produced no
@@ -1109,3 +1119,55 @@ not implemented.
 
 **Status:** consistent. Flagged for the team in case FR-01 was intended to mean
 substring search, which would be a requirement change, not a code fix.
+
+### C-56 A test asserted one migration revision and broke when a second arrived
+
+**Approved design:** the integration suite verifies that the approved schema
+has been applied to the database under test.
+
+**What happened:** `test_alembic_baseline_has_been_applied` asserted
+`version_num == "0001_baseline"`. That was correct while the baseline was the
+only revision. Once C-53 added `0002_pattern_ops`, a **correctly** upgraded
+database failed it — 52 of 53 tests passed and the one failure was the test,
+not the schema.
+
+The defect is that the test asserted an exact migration state when its real
+subject is "was the approved schema ever applied". Those are different
+questions, and only the second is stable as migrations accumulate.
+
+**Fix:** four tests derived from Alembic's own revision graph via
+`ScriptDirectory`, so no revision identifier is hard-coded beyond the baseline
+itself:
+
+1. `test_alembic_baseline_is_in_the_applied_ancestry` — `0001_baseline` is in
+   the ancestry of whatever revision is recorded. Passes at the baseline, at
+   `0002_pattern_ops`, and at any later revision; fails if the baseline was
+   never applied.
+2. `test_applied_revision_lies_on_the_path_from_head_to_base` — the recorded
+   revision is one this repository knows and is reachable from head. Catches a
+   database and a checkout that have diverged, which the ancestry test alone
+   cannot.
+3. `test_pattern_indexes_match_the_applied_revision` — **covers both migration
+   states.** It derives the expectation from the recorded revision and then
+   checks `pg_opclass`: at `0002_pattern_ops` both indexes must exist with
+   `text_pattern_ops`; at the baseline neither may exist. A migration applied
+   or reverted without its DDL taking effect fails here.
+4. `test_the_baseline_functional_indexes_exist_in_every_state` — C-53 is
+   additive, so the original pair is present at every revision.
+
+Also added: `applied_revision` asserts `alembic_version` holds **exactly one**
+row, so a branched or partially applied history is reported rather than
+silently taking the first value.
+
+**No assertion was removed or weakened.** The replacement is strictly stronger:
+the old test checked one string, the new set checks ancestry, reachability,
+single-headedness, and agreement between `alembic_version` and the real
+catalogue in both directions.
+
+The graph logic was exercised without a database, since `ScriptDirectory`
+needs none: ancestry of `0002_pattern_ops` is
+`['0001_baseline', '0002_pattern_ops']`, ancestry of `0001_baseline` is
+`['0001_baseline']`, head is `0002_pattern_ops`, and an unknown identifier is
+not reachable.
+
+**Status:** resolved.

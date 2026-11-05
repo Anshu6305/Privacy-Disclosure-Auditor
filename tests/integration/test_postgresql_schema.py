@@ -18,8 +18,11 @@ To run them, see docs/PHASE4_SCHEMA_BASELINE_AUDIT.md Part 5.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from app.db.models import Base
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
@@ -29,6 +32,21 @@ from sqlalchemy.orm import Session
 from analysis.vocabulary import VERDICT_UNDETERMINED
 
 pytestmark = pytest.mark.integration
+
+BACKEND = Path(__file__).resolve().parents[2] / "backend"
+
+#: The revision that must be in every applied database's ancestry. Asserting
+#: the *ancestry* rather than equality is what lets this file run against a
+#: database at any point on the migration path: at head, or at the baseline
+#: after a downgrade.
+BASELINE_REVISION = "0001_baseline"
+
+PATTERN_INDEX_OPCLASSES = {
+    "ix_application_lower_name_pattern": "text_pattern_ops",
+    "ix_application_lower_package_pattern": "text_pattern_ops",
+}
+#: The revision that introduces the indexes above (C-53).
+PATTERN_REVISION = "0002_pattern_ops"
 
 TEST_URL_VAR = "TEST_DATABASE_URL"
 
@@ -129,17 +147,161 @@ def pg_session(pg_engine):
 # ---------------------------------------------------------------------------
 
 
-def test_alembic_baseline_has_been_applied(pg_engine):
+@pytest.fixture(scope="module")
+def revision_graph() -> ScriptDirectory:
+    """Alembic's own view of the migration graph, read from the versions dir.
+
+    The graph is the authority on ancestry. Hard-coding a list of revision
+    identifiers in a test means the test has to be edited every time a
+    migration is added, which is how the previous version of this file came to
+    assert a single revision and then fail once C-53 added a second.
+    """
+    config = Config(str(BACKEND / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND / "migrations"))
+    return ScriptDirectory.from_config(config)
+
+
+@pytest.fixture(scope="module")
+def applied_revision(pg_engine) -> str:
+    """The single revision recorded in the database."""
+    tables = set(inspect(pg_engine).get_table_names())
+    assert "alembic_version" in tables, (
+        "alembic_version is missing: run 'alembic upgrade head' against the "
+        "test database first"
+    )
     with pg_engine.connect() as connection:
-        tables = set(inspect(pg_engine).get_table_names())
-        assert "alembic_version" in tables, (
-            "alembic_version is missing: run 'alembic upgrade head' against "
-            "the test database first"
+        recorded = [
+            row[0]
+            for row in connection.execute(text("SELECT version_num FROM alembic_version"))
+        ]
+
+    assert len(recorded) == 1, (
+        f"alembic_version holds {len(recorded)} rows ({recorded}). More than "
+        "one means a branched or partially applied history, which this suite "
+        "cannot reason about."
+    )
+    return recorded[0]
+
+
+def test_alembic_baseline_is_in_the_applied_ancestry(
+    applied_revision: str, revision_graph: ScriptDirectory
+):
+    """The baseline has been applied, whatever revision the database is at.
+
+    Replaces an equality check against ``0001_baseline``, which was correct
+    while that was the only revision and became wrong the moment C-53 added
+    ``0002_pattern_ops``: a correctly upgraded database then failed a test
+    whose real subject is "was the schema ever created".
+
+    Ancestry is the right question. A database at ``0002_pattern_ops`` has the
+    baseline in its history; a database at the baseline is its own ancestor.
+    Both states pass, and a database at some unrelated revision does not.
+    """
+    ancestry = {
+        script.revision
+        for script in revision_graph.iterate_revisions(applied_revision, "base")
+    }
+    assert BASELINE_REVISION in ancestry, (
+        f"the database is at {applied_revision!r}, whose ancestry is "
+        f"{sorted(ancestry)}. {BASELINE_REVISION!r} is not among them, so the "
+        "approved baseline schema was never applied to this database."
+    )
+
+
+def test_applied_revision_lies_on_the_path_from_head_to_base(
+    applied_revision: str, revision_graph: ScriptDirectory
+):
+    """The recorded revision is one this repository actually knows about.
+
+    Guards the case the ancestry test cannot: a revision identifier that no
+    longer exists in ``versions/``, or one on a branch that is not reachable
+    from the current head. Either means the database and the repository have
+    diverged, and every other assertion in this file would be measuring an
+    unknown schema.
+    """
+    head = revision_graph.get_current_head()
+    assert head is not None, "the migration graph has no head"
+
+    reachable = {
+        script.revision for script in revision_graph.iterate_revisions(head, "base")
+    }
+    assert applied_revision in reachable, (
+        f"the database is at {applied_revision!r}, which is not on the path "
+        f"from head {head!r} to base. Known revisions: {sorted(reachable)}."
+    )
+
+
+def test_pattern_indexes_match_the_applied_revision(pg_engine, applied_revision, revision_graph):
+    """The catalogue agrees with ``alembic_version``, in **both** states.
+
+    This is the test that covers the downgrade path. It makes no assumption
+    about which revision the database is at: it derives the expectation from
+    the recorded revision and then checks the real catalogue.
+
+    - At ``0002_pattern_ops`` or later: both C-53 indexes exist, and their
+      operator classes are ``text_pattern_ops``. Read from ``pg_opclass``,
+      because ``pg_indexes.indexdef`` omits the operator class when it is the
+      default and a dropped class would therefore be invisible.
+    - At the baseline: neither index exists.
+
+    A mismatch either way means a migration was applied or reverted without
+    its DDL taking effect.
+    """
+    ancestry = {
+        script.revision
+        for script in revision_graph.iterate_revisions(applied_revision, "base")
+    }
+    expected_present = PATTERN_REVISION in ancestry
+
+    with pg_engine.connect() as connection:
+        found = dict(
+            connection.execute(
+                text(
+                    """
+                    SELECT c.relname, oc.opcname
+                      FROM pg_index i
+                      JOIN pg_class c  ON c.oid = i.indexrelid
+                      JOIN pg_class tb ON tb.oid = i.indrelid
+                      JOIN unnest(i.indclass) WITH ORDINALITY AS u(oid, ord) ON TRUE
+                      JOIN pg_opclass oc ON oc.oid = u.oid
+                     WHERE tb.relname = 'application'
+                       AND c.relname = ANY(:names)
+                    """
+                ),
+                {"names": sorted(PATTERN_INDEX_OPCLASSES)},
+            )
         )
-        revision = connection.execute(
-            text("SELECT version_num FROM alembic_version")
-        ).scalar()
-    assert revision == "0001_baseline"
+
+    if expected_present:
+        assert found == PATTERN_INDEX_OPCLASSES, (
+            f"the database is at {applied_revision!r}, which includes "
+            f"{PATTERN_REVISION}, so both pattern indexes should exist with "
+            f"text_pattern_ops. Found: {found or 'none'}."
+        )
+    else:
+        assert found == {}, (
+            f"the database is at {applied_revision!r}, which does not include "
+            f"{PATTERN_REVISION}, so neither pattern index should exist. "
+            f"Found: {found}."
+        )
+
+
+def test_the_baseline_functional_indexes_exist_in_every_state(pg_engine):
+    """C-53 is additive, so these two are present at every revision."""
+    with pg_engine.connect() as connection:
+        found = {
+            row[0]
+            for row in connection.execute(
+                text(
+                    "SELECT indexname FROM pg_indexes WHERE tablename = "
+                    "'application' AND indexname IN "
+                    "('ix_application_lower_name', 'ix_application_lower_package')"
+                )
+            )
+        }
+    assert found == {"ix_application_lower_name", "ix_application_lower_package"}, (
+        f"a baseline functional index is missing; found {sorted(found)}"
+    )
 
 
 def test_all_sixteen_tables_exist(pg_engine):

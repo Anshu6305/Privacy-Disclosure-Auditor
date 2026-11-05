@@ -1,7 +1,28 @@
 # C-53 resolution note — ALG-11 index usability
 
 Date: 2026-11-05 · revised 2026-11-05 after implementation
-Status: **implemented and approved; PostgreSQL verification outstanding.**
+Status: **implemented and approved; PostgreSQL verification part-complete.**
+
+**Measured on the team Mac, 2026-11-05:**
+
+| Check | Result |
+|---|---|
+| `ix_application_lower_name_pattern` operator class | **`text_pattern_ops`** |
+| `ix_application_lower_package_pattern` operator class | **`text_pattern_ops`** |
+| `ix_application_lower_name` operator class | `text_ops`, retained |
+| `ix_application_lower_package` operator class | `text_ops`, retained |
+| Database collation | **`en_US.utf8`** |
+| Integration tests | 52 of 53 passed; **1 failed** |
+
+The failure was in the test suite, not the correction:
+`test_alembic_baseline_has_been_applied` asserted `version_num ==
+"0001_baseline"`, which was correct while the baseline was the only revision
+and became wrong the moment `0002_pattern_ops` existed. A **correctly**
+upgraded database failed it. Replaced by four ancestry-based tests; see §12.
+
+**Still outstanding:** the downgrade and re-upgrade checks, the re-run that
+proves the skip gate fires, and the `EXPLAIN` diagnostic. The run stopped at
+the failing test before reaching them.
 Approved: 2026-11-05. Implemented as the additive revision `0002_pattern_ops`.
 Finding confirmed by: the C-53 diagnostic run on the team Mac against
 `privacy_auditor_frozen_20261105_test`, 2026-11-05.
@@ -363,8 +384,11 @@ semantics, which it must not.
 3. **Prefix-only search is unchanged.** C-55 still stands: a substring query
    finds nothing. pg_trgm with GIN remains the documented upgrade path and is
    not implemented.
-4. **The collation is still unrecorded.** The query exists and has not been
-   run. `datcollate` = _(awaiting step 8 of the verification procedure)_.
+4. **The collation is recorded: `en_US.utf8`.** Measured on the team Mac,
+   2026-11-05. It is a collation-aware locale, not `C` or `POSIX`, which is
+   exactly the condition under which a default-`text_ops` index cannot serve a
+   prefix `LIKE`. C-53's premise is therefore confirmed by measurement and not
+   only by the absence of an index condition.
 5. **`privacy_auditor` remains unmigrated**, so the correction is not applied
    to any database the project actually uses yet.
 
