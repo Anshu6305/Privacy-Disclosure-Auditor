@@ -51,6 +51,7 @@ can run (§2.2).
 |---|---|---|
 | **C-53** pattern-class search indexes, revision `0002_pattern_ops` | **Partly verified** | **Done 2026-11-05:** operator classes (`text_pattern_ops` on both new, `text_ops` retained on both original), collation `en_US.utf8`, upgrade to `0002_pattern_ops`. **Outstanding:** downgrade and re-upgrade, the re-run proving the skip gate fires, and `EXPLAIN` eligibility. Re-run `bash scripts/verify_c53.sh` |
 | **C-56** a test asserted one migration revision | **Fixed** | Replaced by four ancestry-based tests from Alembic's revision graph, covering both migration states. Needs the PostgreSQL re-run to execute |
+| **C-57** `dict(CursorResult)` TypeError | **Fixed** | `.all()` then `dict(rows)`. Reproduced on SQLite before fixing; assertion unchanged. Needs the PostgreSQL re-run to execute |
 
 ### Established facts, for reference
 
@@ -82,11 +83,14 @@ working. Recorded plainly so the viva answer is the same as the tracker:
 
 Tests: **461 passed, 56 skipped** on SQLite, where the 56 skips are the
 PostgreSQL-only tests. **43 passed against PostgreSQL 16** on
-`privacy_auditor_frozen_20261105_test`, 2026-11-05. On a disposable database
-upgraded to `0002_pattern_ops`, **52 of 53 then-existing tests passed** and the
-one failure was a defective test, not the schema (C-56, now fixed). The
-operator classes and the collation `en_US.utf8` are **verified**; the
-downgrade, re-upgrade and `EXPLAIN` checks are **not yet executed**.
+`privacy_auditor_frozen_20261105_test`, 2026-11-05. On disposable databases upgraded to
+`0002_pattern_ops`, two runs each produced one failure, and **both were
+defective tests rather than the schema**: C-56 (a hard-coded revision
+assertion) and C-57 (`dict(CursorResult)`). The second run reached **55 of
+56**. **Verified:** migration `0001` → `0002`, the recorded revision, both
+pattern indexes at `text_pattern_ops`, both originals at `text_ops`, and the
+collation `en_US.utf8`. **Not yet executed:** the downgrade, the re-upgrade,
+the re-run proving the skip gate fires, and the `EXPLAIN` diagnostic.
 
 The schema now has **two migrations**: the frozen `0001_baseline` and the
 additive `0002_pattern_ops`. `privacy_auditor` is still at neither.

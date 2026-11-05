@@ -1732,3 +1732,71 @@ is the second time an unasserted assumption has cost a correction.
 re-upgrade, the re-run proving the skip gate fires, and the `EXPLAIN`
 eligibility diagnostic. The earlier run stopped at the failing test before
 reaching them.
+
+---
+
+## 2026-11-05 — C-57: `dict(CursorResult)`, and what the Mac run did confirm
+
+Second PostgreSQL run: **55 of 56 passed**. Confirmed in that run — migration
+`0001` → `0002`, the revision recorded as `0002_pattern_ops`, both pattern
+indexes at `text_pattern_ops`, both originals at `text_ops`, collation
+`en_US.utf8`.
+
+Two runs, two failures, **both of them my tests rather than the schema**. That
+pattern is worth naming: the correction itself has been right each time, and
+the verification code around it has not.
+
+### C-57
+
+`test_pattern_indexes_match_the_applied_revision` built its map with
+`dict(connection.execute(...))` and failed with
+`TypeError: 'CursorResult' object is not subscriptable`.
+
+`dict()` looks for `.keys()` and takes the mapping protocol when it finds one.
+`CursorResult` **has** `.keys()` — the column names — so `dict()` then tried to
+subscript the result object. The error names `dict`'s fallback path, not the
+real mistake, which is why it reads like a driver fault instead of a missing
+`.all()`.
+
+Reproduced on SQLite first, because the bug is in consuming the result and has
+nothing to do with the backend:
+
+```
+has .keys():            True
+dict(result)         -> TypeError: 'CursorResult' object is not subscriptable
+dict(result.all())   -> {'ix_a': 'text_pattern_ops', 'ix_b': 'text_pattern_ops'}
+empty result         -> {}
+```
+
+The empty case matters: the baseline-state branch asserts `found == {}`.
+
+**Fix:** `.all()`, then `dict(rows)`. Ruff rejected the dict comprehension I
+first wrote (C416, correctly — `rows` is a list by then), so the final form is
+`dict(rows)`, which looks almost identical to the bug. The `.all()` is
+load-bearing, so the comment above it says exactly that rather than leaving the
+next reader to rediscover it.
+
+**The assertion is unchanged.** Both branches are as written for C-56: both
+indexes with `text_pattern_ops` at `0002_pattern_ops`, neither at the
+baseline. Only the construction of `found` changed.
+
+### Databases
+
+`privacy_auditor_c53_20261105c_test` preserved and added to `PROTECTED`,
+alongside `_test` and `b_test`. Six names are now guarded. New target:
+`privacy_auditor_c53_20261105d_test`.
+
+### Counts
+
+Unchanged at **56** integration tests — no test was added or removed. Expected
+**56 passed, 0 skipped** at `0002_pattern_ops`, and **49 passed, 7 skipped**
+after the downgrade.
+
+### Verified
+
+Focused test, all integration, full regression: **461 passed, 56 skipped**.
+`ruff check .` all checks passed. `bash -n` clean.
+
+**C-53 still not fully verified.** Outstanding: the downgrade, the re-upgrade,
+the re-run proving the skip gate fires, and the `EXPLAIN` eligibility
+diagnostic — no run has reached them yet.

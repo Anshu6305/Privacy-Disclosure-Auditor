@@ -254,23 +254,32 @@ def test_pattern_indexes_match_the_applied_revision(pg_engine, applied_revision,
     expected_present = PATTERN_REVISION in ancestry
 
     with pg_engine.connect() as connection:
-        found = dict(
-            connection.execute(
-                text(
-                    """
-                    SELECT c.relname, oc.opcname
-                      FROM pg_index i
-                      JOIN pg_class c  ON c.oid = i.indexrelid
-                      JOIN pg_class tb ON tb.oid = i.indrelid
-                      JOIN unnest(i.indclass) WITH ORDINALITY AS u(oid, ord) ON TRUE
-                      JOIN pg_opclass oc ON oc.oid = u.oid
-                     WHERE tb.relname = 'application'
-                       AND c.relname = ANY(:names)
-                    """
-                ),
-                {"names": sorted(PATTERN_INDEX_OPCLASSES)},
-            )
-        )
+        rows = connection.execute(
+            text(
+                """
+                SELECT c.relname, oc.opcname
+                  FROM pg_index i
+                  JOIN pg_class c  ON c.oid = i.indexrelid
+                  JOIN pg_class tb ON tb.oid = i.indrelid
+                  JOIN unnest(i.indclass) WITH ORDINALITY AS u(oid, ord) ON TRUE
+                  JOIN pg_opclass oc ON oc.oid = u.oid
+                 WHERE tb.relname = 'application'
+                   AND c.relname = ANY(:names)
+                """
+            ),
+            {"names": sorted(PATTERN_INDEX_OPCLASSES)},
+        ).all()
+
+    # The `.all()` above is load-bearing. Do not remove it.
+    #
+    # dict() looks for a .keys() method first and takes the mapping protocol
+    # when it finds one. CursorResult HAS .keys() - the column names - so
+    # dict(result) then tries to subscript the result object and raises
+    # "'CursorResult' object is not subscriptable", an error that names dict's
+    # fallback path rather than the real mistake and so reads like a driver
+    # fault. `.all()` returns a list of Row tuples, which dict() consumes
+    # pairwise as intended.
+    found = dict(rows)
 
     if expected_present:
         assert found == PATTERN_INDEX_OPCLASSES, (

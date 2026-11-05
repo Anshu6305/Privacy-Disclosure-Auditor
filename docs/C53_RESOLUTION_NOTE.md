@@ -12,13 +12,17 @@ Status: **implemented and approved; PostgreSQL verification part-complete.**
 | `ix_application_lower_name` operator class | `text_ops`, retained |
 | `ix_application_lower_package` operator class | `text_ops`, retained |
 | Database collation | **`en_US.utf8`** |
-| Integration tests | 52 of 53 passed; **1 failed** |
+| Migration `0001` → `0002` | succeeded; recorded as `0002_pattern_ops` |
+| Integration tests, run 1 | 52 of 53 passed; 1 failed — **C-56**, a hard-coded revision assertion |
+| Integration tests, run 2 | **55 of 56 passed**; 1 failed — **C-57**, `dict(CursorResult)` |
 
-The failure was in the test suite, not the correction:
-`test_alembic_baseline_has_been_applied` asserted `version_num ==
-"0001_baseline"`, which was correct while the baseline was the only revision
-and became wrong the moment `0002_pattern_ops` existed. A **correctly**
-upgraded database failed it. Replaced by four ancestry-based tests; see §12.
+**Both failures were in the test suite, not in the correction.** C-56
+asserted `version_num == "0001_baseline"`, so a correctly upgraded database
+failed it; replaced by four ancestry-based tests derived from Alembic's
+revision graph. C-57 built a map with `dict(CursorResult)`, which raises
+because `CursorResult` has `.keys()` and `dict` then subscripts it; fixed with
+`.all()`. Neither assertion was weakened. Both are recorded in the consistency
+log.
 
 **Still outstanding:** the downgrade and re-upgrade checks, the re-run that
 proves the skip gate fires, and the `EXPLAIN` diagnostic. The run stopped at

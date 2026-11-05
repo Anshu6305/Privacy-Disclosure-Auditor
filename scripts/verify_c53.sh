@@ -30,13 +30,16 @@
 
 set -euo pipefail
 
-DISPOSABLE_DB="privacy_auditor_c53_20261105c_test"
-# Never a target. The first three are the project's own databases. The two c53
-# databases are earlier verification runs that the team asked to keep, so this
-# script must neither reuse nor disturb them: the "_test" run hit the collision
-# guard, the "b_test" run carried the 2026-11-05 measurements.
+DISPOSABLE_DB="privacy_auditor_c53_20261105d_test"
+# Never a target. The first three are the project's own databases. The three
+# c53 databases are earlier verification runs the team asked to keep, so this
+# script must neither reuse nor disturb them:
+#   _test   hit the collision guard
+#   b_test  gave the operator classes and the en_US.utf8 collation
+#   c_test  got as far as the CursorResult failure (C-57)
 PROTECTED=("privacy_auditor" "privacy_auditor_test" "privacy_auditor_frozen_20261105_test"
-           "privacy_auditor_c53_20261105_test" "privacy_auditor_c53_20261105b_test")
+           "privacy_auditor_c53_20261105_test" "privacy_auditor_c53_20261105b_test"
+           "privacy_auditor_c53_20261105c_test")
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"

@@ -1171,3 +1171,42 @@ needs none: ancestry of `0002_pattern_ops` is
 not reachable.
 
 **Status:** resolved.
+
+### C-57 `dict(CursorResult)` raised a misleading TypeError
+
+**Approved design:** unaffected. A defect in a test I added for C-56.
+
+**What happened:** `test_pattern_indexes_match_the_applied_revision` built its
+expected-versus-actual map with `dict(connection.execute(...))` and failed on
+PostgreSQL with `TypeError: 'CursorResult' object is not subscriptable`. 55 of
+56 integration tests passed; the operator classes, the collation and the
+migration state were all confirmed in the same run.
+
+**Cause.** `dict()` looks for a `.keys()` method and takes the mapping protocol
+when it finds one. `CursorResult` **has** `.keys()` — the column names — so
+`dict()` then tried to subscript the result object, which it cannot. The error
+therefore names `dict`'s fallback path rather than the real mistake, which is
+why it reads like a driver fault and not a two-character omission.
+
+Reproduced on SQLite before fixing, because the bug is in how the result is
+consumed and not in the SQL or the backend:
+
+```
+has .keys():            True
+dict(result)         -> TypeError: 'CursorResult' object is not subscriptable
+dict(result.all())   -> {'ix_a': 'text_pattern_ops', 'ix_b': 'text_pattern_ops'}
+```
+
+**Fix:** `.all()` first, then `dict(rows)`. `.all()` returns a list of `Row`
+tuples, which `dict()` consumes pairwise as intended. The empty case returns
+`{}`, which is what the baseline-state branch of the assertion needs.
+
+The `.all()` is load-bearing and the code looks almost identical without it, so
+a comment above the line says so explicitly rather than leaving the next reader
+to rediscover this.
+
+**No assertion was changed.** Both branches — both indexes with
+`text_pattern_ops` at `0002_pattern_ops`, neither index at the baseline — are
+exactly as written for C-56. Only the construction of `found` changed.
+
+**Status:** resolved.
