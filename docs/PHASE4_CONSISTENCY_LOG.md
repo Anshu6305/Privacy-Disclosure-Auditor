@@ -1369,3 +1369,39 @@ earlier disposable database must be in `PROTECTED` while the current target
 must not be.
 
 **Status:** resolved. Option A and all three migrations unchanged.
+
+### C-61 Two defects the M3B verification run exposed
+
+The run reached the integration suite and reported **1 failed, 48 passed, 7
+skipped** at head `0003_collection_event`. Both numbers were wrong, for
+different reasons.
+
+**The failure: `test_audit_run_foreign_keys_are_all_not_null` expected eight
+identifier columns.** `audit_id` plus seven foreign keys. Under D-1 Option A
+there are six foreign keys, so seven columns. This is the PostgreSQL mirror of
+the unit test corrected with C-59; the mirror was missed. Now it asserts the
+exact **set** of seven names as well as the count, so a renamed column is
+reported by name rather than as an off-by-one.
+
+**The seven skips: the C-53 revision gate asked the wrong question.** It
+tested whether `"0002_pattern_ops"` was in the set read from
+`alembic_version` — but that table holds **one** value, the current revision.
+At head `0003_collection_event` the membership test failed, so seven tests
+that should have run skipped on a fully migrated database.
+
+Equality with the current revision answers "is the database exactly here".
+The gate needs "has this revision been applied", which is ancestry. The
+fixture now derives the applied set from `ScriptDirectory.iterate_revisions`.
+
+**Third occurrence of one mistake.** C-56 hard-coded a revision in a test,
+C-60 hard-coded one in the verification script, and C-61 compares against the
+current revision instead of the ancestry. All three assert a fixed point in a
+chain that grows. Two tests now lock the pattern down: one checks the gate
+opens at every revision from `0002_pattern_ops` onward and stays closed before
+it, the other asserts the integration gate still consults the migration graph.
+
+The failure masked the skips — the script aborts on a failing suite before
+reaching the no-skips assertion that would have caught them. The assertion was
+right; it just never ran.
+
+**Status:** resolved. Option A and all three migrations unchanged.

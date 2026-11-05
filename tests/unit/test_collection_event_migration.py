@@ -319,3 +319,68 @@ def test_every_earlier_disposable_database_is_protected():
     assert f'"{target}"' not in protected_block, (
         f"the target {target!r} is in PROTECTED, so the run would abort"
     )
+
+
+# ---------------------------------------------------------------------------
+# Revision gates must ask about ancestry, not about the current revision
+# ---------------------------------------------------------------------------
+
+
+def _script_directory():
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    backend = Path(__file__).resolve().parents[2] / "backend"
+    config = Config(str(backend / "alembic.ini"))
+    config.set_main_option("script_location", str(backend / "migrations"))
+    return ScriptDirectory.from_config(config)
+
+
+def test_a_revision_gate_opens_at_every_later_revision():
+    """The question a skip guard must ask.
+
+    ``alembic_version`` holds one value. Asking whether it *equals* a revision
+    answers "is the database exactly here", not "has this revision been
+    applied" — and the two diverge the moment anything is added on top. That
+    mistake made seven C-53 tests skip on a fully migrated database, after the
+    same error had already produced C-56 and C-60.
+
+    Ancestry is the right question, and this asserts it behaves at every point
+    on the chain rather than only at today's head.
+    """
+    scripts = _script_directory()
+    head = scripts.get_current_head()
+    chain = [s.revision for s in scripts.iterate_revisions(head, "base")][::-1]
+    assert chain[0] == "0001_baseline"
+    assert "0002_pattern_ops" in chain
+
+    gate = "0002_pattern_ops"
+    opens_at = chain[chain.index(gate) :]
+    closed_at = chain[: chain.index(gate)]
+
+    for revision in opens_at:
+        ancestry = {s.revision for s in scripts.iterate_revisions(revision, "base")}
+        assert gate in ancestry, (
+            f"a database at {revision} has {gate} applied, so the gate must "
+            "open there"
+        )
+
+    for revision in closed_at:
+        ancestry = {s.revision for s in scripts.iterate_revisions(revision, "base")}
+        assert gate not in ancestry, (
+            f"a database at {revision} does not have {gate} applied, so the "
+            "gate must stay closed"
+        )
+
+
+def test_the_integration_gate_uses_ancestry():
+    """Locked down in the source, so it cannot regress to an equality check."""
+    gate_file = (
+        Path(__file__).resolve().parents[1]
+        / "integration"
+        / "test_application_search_postgresql.py"
+    )
+    source = gate_file.read_text(encoding="utf-8")
+    assert "iterate_revisions" in source, (
+        "the revision gate no longer consults the migration graph"
+    )

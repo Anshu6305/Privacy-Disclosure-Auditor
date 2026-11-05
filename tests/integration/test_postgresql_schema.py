@@ -483,8 +483,24 @@ def test_audit_run_foreign_keys_are_all_not_null(pg_engine):
         ).all()
 
     assert rows, "audit_run has no identifier columns; the table is missing"
-    # audit_id plus the seven foreign keys.
-    assert len(rows) == 8, f"expected 8 identifier columns, found {len(rows)}"
+
+    # audit_id plus the SIX foreign keys. Six, not seven: under D-1 Option A
+    # a snapshot is one collection event covering both sources, so audit_run
+    # references one snapshot rather than two. DOC-1 identified Phase 3
+    # section 10.3's "seven" as the error; section 10.2 stands.
+    #
+    # The exact set is asserted as well as the count, so a column added or
+    # renamed is reported by name instead of as an off-by-one.
+    assert {name for name, _ in rows} == {
+        "audit_id",
+        "app_id",
+        "snapshot_id",
+        "taxonomy_mapping_version_id",
+        "classification_model_id",
+        "span_model_id",
+        "alignment_model_id",
+    }, f"unexpected identifier columns: {sorted(name for name, _ in rows)}"
+    assert len(rows) == 7, f"expected 7 identifier columns, found {len(rows)}"
 
     nullable = [name for name, is_nullable in rows if is_nullable == "YES"]
     assert nullable == ["audit_id"] or not nullable, (

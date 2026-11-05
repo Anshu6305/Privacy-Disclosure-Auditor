@@ -2050,3 +2050,49 @@ Unit tests, migration tests and the full suite: **480 passed, 56 skipped**.
 block was executed exactly as written rather than only parsed.
 
 Option A and all three migrations are unchanged.
+
+---
+
+## 2026-11-05 — C-61: the run exposed two defects, and one masked the other
+
+`1 failed, 48 passed, 7 skipped` at head `0003_collection_event`. Both numbers
+were wrong.
+
+**The failure.** `test_audit_run_foreign_keys_are_all_not_null` expected eight
+identifier columns — `audit_id` plus seven foreign keys. Option A has six, so
+seven columns. This is the PostgreSQL mirror of the unit test I corrected with
+C-59, and I missed the mirror. It now asserts the exact **set** of seven names
+as well as the count, so a rename is reported by name rather than as an
+off-by-one.
+
+**The seven skips, which should have been zero.** The C-53 gate asked whether
+`"0002_pattern_ops"` was in the set read from `alembic_version`. That table
+holds **one** value: the current revision. At `0003_collection_event` the
+membership test failed, so seven tests that should have run skipped on a fully
+migrated database — quietly reporting less coverage than existed.
+
+Equality with the current revision answers "is the database exactly here". The
+gate needs "has this revision been applied", which is ancestry. The fixture now
+derives the applied set from `ScriptDirectory.iterate_revisions`.
+
+**Third time for one mistake.** C-56 hard-coded a revision in a test, C-60 in
+the verification script, C-61 compared against the current revision instead of
+the ancestry. Each asserts a fixed point in a chain that grows. Two tests now
+hold the line: one checks the gate opens at every revision from
+`0002_pattern_ops` onward and stays closed before it — at every point on the
+chain, not just today's head — and one asserts the integration gate still
+consults the graph.
+
+**The failure hid the skips.** The script aborts on a failing suite before
+reaching its no-skips-at-head assertion, which is exactly what would have
+caught them. The assertion was right; it never ran. Worth remembering when
+reading a green-looking partial run.
+
+### Verified
+
+**482 passed, 56 skipped**; ruff clean. Next disposable database:
+`privacy_auditor_m3b_20261105c_test`. `privacy_auditor_m3b_20261105b_test` is
+preserved and protected — nine guarded names.
+
+Expected on the next run: step 9 **56 passed, 0 skipped**; step 10b green with
+skips.

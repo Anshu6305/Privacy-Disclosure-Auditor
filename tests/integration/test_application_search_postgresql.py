@@ -22,6 +22,7 @@ truncated, and the fixture rows never survive the test.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 from app.db.models import Application
@@ -220,20 +221,44 @@ F01_STATEMENT = (
 
 @pytest.fixture(scope="module")
 def applied_revisions(pg_engine) -> set[str]:
+    """Every revision applied to this database, by **ancestry**.
+
+    ``alembic_version`` holds only the current revision, so membership in that
+    one value answers "is the database exactly here", not "has this revision
+    been applied". Those differ the moment another revision is added on top:
+    a database at ``0003_collection_event`` has ``0002_pattern_ops`` applied,
+    and asking the wrong question made seven C-53 tests skip on a fully
+    migrated database. Same error as C-56 and C-60; same fix — ask the graph.
+    """
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    backend = Path(__file__).resolve().parents[2] / "backend"
+    config = Config(str(backend / "alembic.ini"))
+    config.set_main_option("script_location", str(backend / "migrations"))
+    scripts = ScriptDirectory.from_config(config)
+
     with pg_engine.connect() as connection:
-        rows = connection.execute(text("SELECT version_num FROM alembic_version"))
-        return {row[0] for row in rows}
+        current = [
+            row[0]
+            for row in connection.execute(text("SELECT version_num FROM alembic_version"))
+        ]
+    if not current:
+        return set()
+    assert len(current) == 1, f"alembic_version holds {current}; expected one row"
+
+    return {script.revision for script in scripts.iterate_revisions(current[0], "base")}
 
 
 @pytest.fixture(scope="module")
 def pattern_indexes_applied(applied_revisions: set[str]) -> None:
     if "0002_pattern_ops" not in applied_revisions:
         pytest.skip(
-            "The C-53 revision 0002_pattern_ops is not applied to this "
-            f"database (alembic_version: {sorted(applied_revisions) or 'none'}). "
-            "These tests need a database upgraded to it. Create a disposable "
-            "one; see docs/C53_RESOLUTION_NOTE.md section 9. The frozen "
-            "database is intentionally left at the baseline."
+            "The C-53 revision 0002_pattern_ops is not in this database's "
+            f"applied ancestry ({sorted(applied_revisions) or 'none'}). These "
+            "tests need a database upgraded to it or beyond; see "
+            "scripts/verify_migrations.sh. The frozen database is "
+            "intentionally left at the baseline."
         )
 
 
