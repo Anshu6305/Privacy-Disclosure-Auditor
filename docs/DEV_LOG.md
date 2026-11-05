@@ -911,3 +911,108 @@ OPP-115 is a corpus of **website** policies from 2016; this project audits
 exist. The model is also trained on OPP-115's segments and will be applied to
 F-09's, which have different boundaries. The held-out score measures neither
 of those gaps.
+
+---
+
+## 2026-11-05 — Milestone 3B: planning only, no implementation
+
+Authorised as planning. **No model, migration, database or application code
+was touched.** `git status` before the commit showed exactly two documentation
+files changed and one added.
+
+### What was produced
+
+`docs/M3B_IMPLEMENTATION_PLAN.md` — F-01 to F-07, FR-01 to FR-07, task T1.
+
+The substance of it:
+
+**M3A maps cleanly onto three of the four tables it needs.** `application`,
+`declared_practice` and `policy_segment` are direct field-for-field mappings.
+`disclosure_snapshot` is the one that depends on D-1, which is why M3A was
+built with `Provenance` as a **per source document** record — the smaller
+unit, from which either arrangement can be assembled without rewriting it.
+
+**Three of seven functions do not depend on D-1 at all.** F-01
+(searchApplications), F-03 (handleUnknownApplication) and the application
+repository could be built today. F-02, F-04, F-05, F-06 and F-07 all need to
+know what a snapshot is first.
+
+### Where the two options genuinely differ
+
+Not in difficulty. In which approved document gets amended, and in one
+behaviour:
+
+**Partial retrieval failure.** Phase 1 named scraper breakage the project's
+highest-probability risk, so a collection event where one source succeeds and
+the other fails is expected to be common, not a corner case.
+
+- Option A (one row per collection event) has one hash column, one path and
+  one `status` for two sources. The per-source HTTP status, byte count and
+  failure reason have nowhere to live unless a seventeenth table is added.
+- Option B (one row per source) handles it with no special case: the
+  successful source gets its row and its own hash, the failed one gets a
+  failure row. M3A's five `Provenance.outcome` values map straight through.
+
+Option B also makes a changed Data Safety page detectable **by digest**;
+under Option A the declaration is parsed into rows and never hashed, so a
+change can only be found by diffing parsed rows.
+
+Option A's advantage is that it is the design already approved, needs no
+change-log entry, and reads audit history directly. Option B needs faculty
+approval and reads history through `audit_run` — which, on inspection, is
+what FR-25 and FR-26 actually compare anyway.
+
+Both are written up without a recommendation, because D-1 is the faculty's
+ruling to make.
+
+### Two things neither option can store
+
+Found in M3A, independent of D-1, and raised separately rather than folded in:
+
+1. **`declares_no_data_collected`** — Google's app-level "this app doesn't
+   collect or share any user data". Distinct from a declaration that merely
+   omits a category, and ALG-8 could reasonably treat it differently.
+2. **`SecurityPractices`** — encryption in transit, deletion availability,
+   independent security review.
+
+Neither is required by FR-01 to FR-07, so M3B is not blocked by them.
+
+### The pilot, proposed and not performed
+
+~20 applications in six deliberately chosen groups — including three that
+declare **no** data collected, two with non-English policies, and three with
+very short policies to test F-10's analysability floor. Chosen to exercise the
+pipeline, not to be representative; 20 applications cannot be representative
+of anything, and the plan says so.
+
+Four likely findings are recorded **in advance**, so they cannot later be
+presented as successes: the declaration normalisation rules were written from
+Google's documentation and never from an inspected page; M4's extractor has
+only processed invented fixtures; some policies will not be retrievable at
+all; and F-10's thresholds were chosen against OPP-115 website policies, not
+Android ones.
+
+The M5 baseline will be run over the pilot segments as a **smoke test only**.
+There are no gold labels for those 20 applications, so no accuracy figure can
+be computed from them and none will be reported.
+
+### Tracker corrected
+
+`docs/TEAM_TRACKER.md` now records Docker as installed, the frozen Alembic
+baseline, D-2/D-6/D-7 as withdrawn, E-5 as restored, and a new block spelling
+out what M1 to M7 amount to: 0 applications, 0 live retrievals, 0 rows in
+`privacy_auditor`, no end-to-end run, 1 of 3 learning tasks trained, no gold
+set, and no F-15 mapping rules authored. Complete at unit-test level with
+controlled fixtures is not the same as working, and the tracker now says so
+rather than leaving it to be discovered at the viva.
+
+### Unchanged, deliberately
+
+M4 and M5 implementations, the M5 baseline artefact, its policy-grouped split,
+its seed and its held-out test results. The baseline stays the reference
+experiment; it was not retrained and the test set was not touched.
+
+### Still blocked
+
+M3B implementation on D-1. M6 on labelled alignment pairs and the gold set.
+M8, M9, M10 not started.
