@@ -463,3 +463,80 @@ tests are unaffected; they never use `Settings`.
 **PostgreSQL verification has still not been achieved.** The migration has not
 yet been applied and the 29 tests have not yet passed. The next run is the
 first real attempt.
+
+---
+
+## 2026-11-05 — PostgreSQL verified
+
+The baseline applied cleanly after the configuration fix:
+
+```
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001_baseline,
+      Baseline schema: the sixteen tables of the approved Phase 3 design.
+```
+
+```
+$ .venv/bin/pytest -m integration -v
+platform darwin -- Python 3.12.16, pytest-8.3.4
+collected 219 items / 189 deselected / 30 selected
+tests/integration/test_migration_baseline.py s
+tests/integration/test_postgresql_schema.py .............................
+                29 passed, 1 skipped, 189 deselected in 0.44s
+```
+
+**This is the first time any part of this project has run against PostgreSQL.**
+
+### Now verified on PostgreSQL 16 (postgres:16-alpine)
+
+| Property | Result |
+|---|---|
+| Alembic upgrade executes and stamps `0001_baseline` | Pass |
+| 16 tables created | Pass |
+| `threshold_config`, `training_config` are JSONB | Pass |
+| 11 primary keys are BIGINT | Pass — SQLite reports INTEGER for these, so this was unverifiable until now |
+| Timestamps are `timestamptz` | Pass |
+| `verdict.confidence` is NUMERIC | Pass |
+| Both functional `lower()` indexes exist | Pass |
+| 28 CHECK constraints present in `pg_constraint` | Pass |
+| 8 UNIQUE constraints present | Pass |
+| `audit_run`: 8 identifier columns, no nullable reference | Pass |
+| PostgreSQL rejects a sixth verdict value | Pass |
+| PostgreSQL rejects `Undetermined` in the gold set | Pass |
+| PostgreSQL rejects evidence with no quote | Pass |
+| PostgreSQL rejects an absence record carrying a quote | Pass |
+| PostgreSQL rejects two verdicts for one category | Pass |
+| PostgreSQL rejects a failed audit with no reason | Pass |
+| PostgreSQL rejects an out-of-range verdict confidence | Pass |
+
+The last seven matter most. The SQLite suite proved the constraints were
+*declared*; these prove the database the system will actually run on
+*enforces* them.
+
+### Two predictions that were wrong
+
+Before the run I said I expected failures from `NUMERIC` returning `Decimal`
+rather than `float`, and from the functional-index assertion being written
+from documentation rather than from a real `pg_indexes` row. Neither failed.
+The type tests read `information_schema.columns.udt_name` rather than a Python
+value, so the Decimal question never arises, and the index definition does
+contain `lower` as written. Recorded because the caution was published and
+should not be left standing as though it had been borne out.
+
+### State of the databases
+
+| Database | State |
+|---|---|
+| `privacy_auditor` | **Empty. 0 tables. Never migrated.** Untouched throughout |
+| `privacy_auditor_test` | Schema applied, stamped `0001_baseline`, used by the 29 tests |
+
+Every test ran inside a transaction that was rolled back, so even the test
+database holds no rows from the run.
+
+### Still outstanding
+
+- `0001_baseline` is still a metadata build, not a frozen migration. Strategy A
+  from audit Part 4 is now the confirmed path.
+- Class D findings D-1 to D-10, and DOC-1 and DOC-2, still await rulings.
+- `practice_type` and `scope` still have no defined vocabulary.

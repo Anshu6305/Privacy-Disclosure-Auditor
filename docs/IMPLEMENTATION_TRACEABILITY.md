@@ -79,7 +79,7 @@ design forbids and confirming the database refused it.
 | Metrics declare abstention handling | `ck_metric_abstention_handling`, `uq_metric_unique_per_run` | `test_metric_must_declare_how_abstentions_were_handled`, `test_both_abstention_handlings_coexist_for_one_metric` | Implemented and verified |
 | Cascade deletes leave no orphans | `ondelete` clauses | `test_cascade_delete_removes_dependent_rows` | Implemented and verified |
 | Baseline migration | `backend/migrations/versions/0001_baseline_schema.py` | `test_migration_baseline.py` (2 tests) | Implemented and verified on SQLite |
-| Schema on PostgreSQL (JSONB, BIGINT, functional indexes) | same | `test_postgresql_schema_is_not_verified_here` — skipped | **Not verified** — no PostgreSQL in this environment |
+| Schema on PostgreSQL (JSONB, BIGINT, functional indexes) | same | `test_postgresql_schema.py` — **29 tests, all passing** | **Verified on PostgreSQL 16**, 2026-11-05 |
 
 ### Repositories and persistence functions
 
@@ -257,10 +257,26 @@ M8 and M9.
 
 | Item | Status |
 |---|---|
-| `tests/integration/test_postgresql_schema.py` | **Written — 29 tests** |
-| Executed against PostgreSQL | **No. Never run.** All 29 skip without `TEST_DATABASE_URL` |
-| Safety guards verified | Yes — a URL naming the project database fails with a refusal; a missing driver or unreachable server skips cleanly |
+| `tests/integration/test_postgresql_schema.py` | 29 tests |
+| Executed against PostgreSQL | **Yes — 2026-11-05, PostgreSQL 16 (postgres:16-alpine). 29 passed, 1 skipped** |
+| Alembic upgrade executed | Yes — `Running upgrade -> 0001_baseline` against `privacy_auditor_test` |
+| Safety guards verified | Yes — a URL naming the project database is refused; a missing driver or unreachable server skips cleanly |
 
-The tests exist; the verification does not. Nothing in this project may
-describe the PostgreSQL schema as verified until these have run and their
-output is recorded in `docs/DEV_LOG.md`.
+### What PostgreSQL verification now covers
+
+| Property | Verified |
+|---|---|
+| Alembic baseline applies and stamps `0001_baseline` | Yes |
+| All 16 tables created | Yes |
+| `threshold_config` and `training_config` are **JSONB**, not JSON | Yes |
+| 11 primary keys are **BIGINT** — the check SQLite structurally cannot make | Yes |
+| Timestamps are **timestamptz**, not naive | Yes |
+| `verdict.confidence` is **NUMERIC** | Yes |
+| Both functional `lower()` indexes exist and are functional | Yes |
+| All **28 CHECK** constraints present in `pg_constraint` | Yes |
+| All **8 UNIQUE** constraints present | Yes |
+| `audit_run` has 8 identifier columns and no nullable reference | Yes |
+| PostgreSQL **rejects** 7 classes of invalid record | Yes |
+
+The project database `privacy_auditor` is still empty and was not touched;
+everything ran against `privacy_auditor_test`.

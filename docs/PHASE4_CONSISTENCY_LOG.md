@@ -654,3 +654,27 @@ unrelated-looking failures.
 
 **Why this is recorded:** a test that passes when the thing it checks is absent
 is worse than no test, because it reports confidence that was never earned.
+
+### C-35 PostgreSQL schema verified
+
+**What was claimed before:** nothing. Every previous entry recorded the
+PostgreSQL schema as unverified, and the traceability document carried the gap
+as an explicit open row.
+
+**What happened on 2026-11-05:** the baseline was applied to
+`privacy_auditor_test` on PostgreSQL 16 and all 29 integration tests passed.
+JSONB, the eleven BIGINT primary keys, `timestamptz`, the NUMERIC verdict
+confidence, both functional `lower()` indexes, all 28 CHECK and 8 UNIQUE
+constraints, and seven classes of invalid record that PostgreSQL must reject.
+
+**Why it matters for the design claims:** the SQLite suite showed the
+constraints were declared. This shows the production database enforces them.
+In particular the four-label gold-set CHECK, the five-verdict CHECK and the
+evidence and absence record rules — the constraints that carry the approved
+design's distinction between a system abstention and a human annotation — are
+now known to hold in PostgreSQL and not only in the ORM metadata.
+
+**Scope of the claim:** the schema is verified. The application is not. No
+endpoint, worker or pipeline stage has run against this database.
+
+**Status:** the longest-standing open verification gap in Phase 4 is closed.

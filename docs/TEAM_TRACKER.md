@@ -25,7 +25,7 @@ Faculty Guide: _[to be filled in]_
 | Milestone | Owner | Status | Notes |
 |---|---|---|---|
 | M1 Repository and environment | all | **Complete** | Verified on two machines; Python 3.12 on the team Mac. Docker not yet installed |
-| M2 Database and schema | R5 | **Implemented, partly verified** | 16 tables, 169 tests on SQLite. **PostgreSQL never contacted.** Baseline audit found 7 structural deviations and 6 omissions against Phase 3 §10.2 |
+| M2 Database and schema | R5 | **Implemented and verified** | 16 tables. 189 tests on SQLite, **29 on PostgreSQL 16, all passing**. Class E omissions restored; **7 class D deviations against Phase 3 §10.2 still await a ruling** |
 | M3 Acquisition and offline corpus | R2 | **Blocked** | Needs Play Store collection on a team machine; scraper library unmaintained |
 | M4 Text processing | R3 | **Not started** | No external dependency; can start once audit corrections are settled |
 | M5 Baseline ML | R3 | **Ready, not started** | OPP-115 in place and verified: 115 policies, 23,194 practices, 77,906 usable spans |
@@ -55,9 +55,9 @@ Faculty Guide: _[to be filled in]_
 1. Decide the F-18 alignment training-data approach — master plan §7.
 2. Confirm encoder checkpoints for the three learning tasks.
 3. Schedule the 300 to 500 app Play Store collection, rate-limited per NFR-15.
-4. Install Docker Desktop on at least one machine and run
-   `docker compose up --build`. PostgreSQL runs in a container and does not
-   need a separate install.
+4. ~~Install Docker Desktop~~ **Done 2026-11-05.** Docker 29.9.2;
+   `postgres:16-alpine` healthy; `privacy_auditor_test` created and the schema
+   verified against it.
 8. Build every virtual environment on Python 3.12. Python 3.14 breaks the
    install; see C-18 in the consistency log.
 5. Confirm free-tier GPU access for the three training runs.
