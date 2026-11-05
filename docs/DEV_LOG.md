@@ -1457,3 +1457,86 @@ metrics, and the R1 to R6 placeholders that keep contributions unattributed.
 Documentation only. `pytest tests -p no:warnings` → **461 passed, 53 skipped**,
 unchanged. `ruff check .` → all checks passed. No code, model, migration or
 database touched.
+
+---
+
+## 2026-11-05 — C-53 verification procedure prepared; two errors in my own note found
+
+No implementation. Authorised task: prepare the exact local procedure for the
+team to run on the Mac. **Nothing was executed against PostgreSQL** — it is
+unreachable from a development session, which is the whole reason this document
+exists.
+
+### Two errors in `docs/C53_RESOLUTION_NOTE.md` §10, found by re-reading the repository
+
+The instruction not to guess the Compose service name was well placed.
+
+1. **The service is `database`, not `db`.** The note's §10.3 used
+   `docker compose exec -T db psql ...` throughout. `docker-compose.yml`
+   declares `database`, container `auditor_database`. Every one of those
+   commands would have failed with "no such service". I had written them from
+   habit rather than from the file.
+2. **The expected skip counts were wrong.** The note said "45 passed, 8
+   skipped" against the frozen database. Counted properly: 53 integration
+   tests — 29 schema plus **24** search, not 14 — and **7** gated on
+   `0002_pattern_ops`, not 8. So **46 passed, 7 skipped**.
+
+Both corrected. The superseded sketch is kept in the note, because it is a
+historical document, but its code block now opens with a DO NOT RUN warning
+naming the wrong service — and a copy-paste of it fails harmlessly with "no
+such service" rather than touching anything.
+
+### `scripts/test_database_url.py`
+
+New. Composes `TEST_DATABASE_URL` from the project's own settings and prints
+only the finished URL, for use as
+`export TEST_DATABASE_URL="$(... privacy_auditor_c53_20261105_test)"`.
+
+Three reasons it is worth a script rather than a typed string:
+
+- The password never enters shell history or the terminal.
+- A password containing `@`, `:`, `/` or `#` silently breaks a hand-written
+  URL, because those are URL syntax. `quote(..., safe="")` handles it.
+- It **refuses** the three protected database names outright, and refuses any
+  name not ending in `_test`. Verified: all four refusals exit 2 and print no
+  URL.
+
+Inside the container no password is handled at all — `psql` reads
+`$POSTGRES_PASSWORD` from the container's own environment, so it is never
+typed, pasted or printed on the host either.
+
+### `docs/C53_VERIFICATION_PROCEDURE.md`
+
+Twelve steps: confirm the service name from the configuration rather than
+trusting any document, confirm Docker and container health, check the
+disposable name is unused and **stop if it exists**, create it, migrate only
+it, read the operator classes from `pg_opclass`, read the collation, run the 53
+tests, downgrade, re-run, run the diagnostic, report.
+
+Two design points worth recording:
+
+**Operator classes come from `pg_opclass`, not `pg_indexes.indexdef`.**
+`indexdef` omits the operator class when it is the default, so a `text_ops` and
+a `text_pattern_ops` index print identically. Verifying the correction by
+reading `indexdef` would prove nothing — which is the trap C-15's original test
+fell into.
+
+**The frozen database is not re-run.** An earlier draft had the team re-running
+the suite against it to prove the skip gate works, which was muddled: the
+helper refuses that name by design. The evidence comes from step 10 instead —
+downgrade the disposable database and the same 7 tests must start skipping.
+Same proof, and the protected database is not involved at all.
+
+### Honest about what the diagnostic can show
+
+`enable_seqscan = off` establishes index **eligibility**. At 300 to 500 rows
+PostgreSQL will still choose a sequential scan when the setting is left alone,
+and that is correct. The procedure says so at step 11, and no performance
+improvement is claimed from it.
+
+### Verified
+
+Documentation and one script. `ruff check .` → all checks passed.
+`pytest tests -p no:warnings` → **461 passed, 53 skipped**, unchanged. No
+model, migration, query or database touched. C-53 remains **Implemented**, not
+verified.

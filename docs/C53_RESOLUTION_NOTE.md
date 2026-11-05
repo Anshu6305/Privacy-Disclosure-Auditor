@@ -363,8 +363,8 @@ semantics, which it must not.
 3. **Prefix-only search is unchanged.** C-55 still stands: a substring query
    finds nothing. pg_trgm with GIN remains the documented upgrade path and is
    not implemented.
-4. **The collation is still unrecorded.** See §10.1 — the query exists, it has
-   not been run.
+4. **The collation is still unrecorded.** The query exists and has not been
+   run. `datcollate` = _(awaiting step 8 of the verification procedure)_.
 5. **`privacy_auditor` remains unmigrated**, so the correction is not applied
    to any database the project actually uses yet.
 
@@ -423,7 +423,24 @@ The operator class is present in the emitted DDL. That answers the
 "do not assume it compiled" requirement at the DDL level; whether PostgreSQL
 *stored* it is a separate question, which §10.4 settles from `pg_opclass`.
 
-### 10.3 Disposable database — exact steps
+### 10.3 Disposable database — superseded
+
+**`docs/C53_VERIFICATION_PROCEDURE.md` is the procedure to follow.** It was
+written after re-reading `docker-compose.yml` and corrects two errors below:
+
+- The Compose service is **`database`**, not `db`. Every `docker compose exec`
+  in this section would have failed.
+- Against the frozen database the expected result is **46 passed, 7 skipped**,
+  not 45 and 8: there are 53 integration tests and **7** are gated on
+  `0002_pattern_ops`.
+
+It also removes the need to handle the password by hand, through
+`scripts/test_database_url.py`.
+
+The sketch is kept below for the record, with its errors, because the note is a
+historical document.
+
+#### Original sketch — contains the two errors above
 
 **The three existing databases are not to be touched**: `privacy_auditor`,
 `privacy_auditor_test`, `privacy_auditor_frozen_20261105_test`. None of them is
@@ -433,6 +450,10 @@ test creates or drops a database.
 Create a new, uniquely named one. Substitute today's date and your password:
 
 ```bash
+# SUPERSEDED - DO NOT RUN. The service below is wrong: it is 'database', not
+# 'db', so every exec here fails with "no such service". Follow
+# docs/C53_VERIFICATION_PROCEDURE.md instead.
+
 # 1. A name that cannot collide with anything that exists.
 NEW_DB=privacy_auditor_c53_20261105_test
 
@@ -471,7 +492,8 @@ TEST_DATABASE_URL="postgresql+psycopg://auditor:PASSWORD@localhost:5432/privacy_
   .venv/bin/python -m pytest tests/integration -p no:warnings -v
 ```
 
-Expect **53 passed**: the 43 that passed before, plus the 10 C-53 tests.
+Expect **53 passed**: 29 schema + 24 search. (The note originally said "43
+plus 10"; the search file holds 24 tests, of which 7 are gated.)
 
 Against the **frozen** database, which stays at the baseline:
 
@@ -480,10 +502,9 @@ TEST_DATABASE_URL="postgresql+psycopg://auditor:PASSWORD@localhost:5432/privacy_
   .venv/bin/python -m pytest tests/integration -p no:warnings -v
 ```
 
-Expect **45 passed, 8 skipped**: the original 43 still pass, the two
-`text_ops` catalogue checks now pass there too, and the eight tests needing
-`0002_pattern_ops` skip with a message saying so. That asymmetry is
-deliberate — it proves the skip guard works rather than silently passing on an
+Expect **46 passed, 7 skipped** — corrected from "45 passed, 8 skipped". The
+7 skips are the tests needing `0002_pattern_ops`. That asymmetry is
+deliberate: it proves the skip guard works rather than silently passing on an
 unmigrated database.
 
 Then re-run the diagnostic from §10.1 against the disposable database. The two
