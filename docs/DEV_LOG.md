@@ -669,3 +669,46 @@ integration run reported "29 passed, 1 skipped" and this one reports no skip.
 
 No database was dropped, reset or recreated. No `docker compose down -v`, no
 `DROP DATABASE`.
+
+---
+
+## 2026-11-05 — Decision table revised after team challenge
+
+No code, model, migration or database changed. 197 passed, 29 skipped.
+
+The team challenged D-2, D-6, D-7 and DOC-2 and asked for each to be
+demonstrated rather than argued. All three challenges were correct.
+
+**D-6.** Ran the committed `assign_category_verdict` against an empty
+judgement list: it returns Declared-not-in-policy with an F-21 absence record.
+Then ran all five verdict scenarios using only practice-backed judgements
+carrying no `declared_practice_id` — all five reachable. The approved NOT NULL
+structure is sufficient and my nullable two-sided design was unnecessary.
+Worse, a declaration-only candidate has no policy text for F-18 to read, so it
+invites a label for a pair with nothing to compare; the existing fixture emits
+`NO_MATCH` at 0.95, a number with no basis. Recommendation reversed to
+restore.
+
+**D-7 and DOC-2.** Read F-21 and F-22 in full. F-21 requires a fixed
+system-generated absence statement *stored in the record*, with no segment
+reference. §10.2's note nulls `segment_id` and the offsets, not the text.
+There is no contradiction; DOC-2 withdrawn and D-7 reversed to restore the
+single NOT NULL `sentence_text` column.
+
+**D-2.** Checked Google's developer documentation and a third-party Data
+Safety scraper's documented output. Both are positive-only: collected and
+shared lists, no not-collected list. Also confirmed `acquisition/` holds one
+empty `__init__.py`, so this project has never parsed a declaration and I had
+no basis for the claim. Withdrawn. The real distinctions — an app-level
+"declares no collection" statement, and parsed-but-empty versus
+could-not-parse — belong with E-2.
+
+**Revised balance:** seven compliance restorations, two implementation
+deviations, one document correction, two withdrawals. The first edition
+claimed six changes and three amendments to the approved design, which
+overstated how often the approved design was at fault.
+
+Deliverable: `docs/PHASE4_DECISION_TABLE.md`, rewritten. The three superseded
+entries in `docs/PHASE4_SCHEMA_BASELINE_AUDIT.md` are annotated in place
+rather than deleted, so the original reasoning and its correction both remain
+on the record.

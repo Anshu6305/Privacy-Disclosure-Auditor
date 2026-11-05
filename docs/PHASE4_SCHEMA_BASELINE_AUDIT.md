@@ -133,13 +133,20 @@ nullable`
 | `declaration_type` + `is_declared` | one row per (category, type) with an explicit boolean | two booleans in one row | **D-2** |
 | `ds_data_type`, `is_optional`, `is_ephemeral`, `purpose`, `raw_label` | — | added | C |
 
-**Why D-2 matters.** The baseline's `is_declared` boolean can record an
-*explicit negative*: "this category was presented and marked as not collected".
-The implementation's two booleans cannot distinguish that from the category
-being absent from the declaration altogether — both appear as `false`. Google's
-Data Safety form does produce explicit negatives, and ALG-8 step 2 resolves a
-decisive SUPPORTS against the declaration state, so the distinction could
-change a verdict.
+**D-2 — SUPERSEDED 2026-11-05.** This entry asserted that Google's Data Safety
+form produces explicit per-category negatives which the implementation cannot
+record.
+
+The assertion was never checked. The published Data Safety section appears to
+be positive-only: Google's own documentation describes it as showing what an
+app "collects or shares", and a third-party Data Safety scraper's documented
+output has `collectedDataTypes` and `sharedDataTypes` with no not-collected
+list. Our own acquisition layer does not exist — `acquisition/` holds one
+empty `__init__.py` — so nothing in this project has ever read a declaration.
+
+The revised assessment is in `docs/PHASE4_DECISION_TABLE.md`: the
+recommendation is **withdrawn**, and the distinctions that do appear to exist
+are app-level rather than per-category and belong with finding E-2.
 
 ## 4. `policy_segment`
 
@@ -321,16 +328,20 @@ BOOLEAN; threshold_applied FLOAT; model_version_id FK`
 | `threshold_applied`, `model_version_id` | — | added | C |
 | `abstained` retained, not discarded | required | present | **A** |
 
-**Why the implementation deviates.** Under the baseline, `practice_id` is NOT
-NULL, so every judgement must point at an extracted policy practice. A declared
-category with **no** policy practice at all therefore cannot have a judgement
-row — and that is exactly the input to a Declared-not-in-policy verdict. The
-baseline as written cannot represent the most common inconsistency the project
-exists to find.
+**D-6 — SUPERSEDED 2026-11-05.** This entry claimed the baseline could not
+represent a Declared-not-in-policy verdict because `practice_id NOT NULL`
+prevents a judgement row for a declared category with no policy practice.
 
-The implementation's two nullable sides with a CHECK requiring one of them does
-represent it. That is a defensible correction, but it is a deviation from the
-approved design and must be approved, not assumed.
+That was wrong. F-19 takes the declaration state as a separate input, so such
+a category needs an **empty judgement list**, not a one-sided judgement row.
+Demonstrated against the committed implementation: an empty list yields
+Declared-not-in-policy with its F-21 absence record, and all five verdicts are
+reachable using only practice-backed judgements carrying no
+`declared_practice_id`.
+
+The revised assessment is in `docs/PHASE4_DECISION_TABLE.md`: restore the
+approved NOT NULL structure and drop `declared_practice_id`. This is a
+compliance restoration, not a deviation needing approval.
 
 ## 12. `verdict` — the confidence omission
 
@@ -372,14 +383,20 @@ display_order INTEGER`
 | CHECK on record_type | §10.3 | present | **A** |
 | segment_id and offsets nullable | required | present | **A** |
 
-**D-7 is arguably the baseline contradicting itself again.** §10.2 leaves
-`sentence_text` unmarked, which by its own rule means NOT NULL, while the
-purpose note in the same row says segment_id and offsets are null for absence
-records. An absence record has no sentence to store, so a NOT NULL
-`sentence_text` would force an empty string or invented text — the latter being
-precisely what NFR-06 forbids. The implementation makes it nullable and adds
-CHECKs that enforce the distinction properly. This still needs recording as a
-deviation.
+**D-7 — SUPERSEDED 2026-11-05.** This entry argued that §10.2 contradicted
+itself by leaving `sentence_text` unmarked, and therefore NOT NULL, while the
+same row's note says offsets are null for absence records.
+
+That reading was wrong. The note nulls `segment_id` and the offsets; it says
+nothing about `sentence_text`. F-21 requires an absence record to store a
+fixed system-generated statement, and F-22 requires an inconclusive record to
+store candidate text or a no-candidates statement. Every record type carries
+text, so a NOT NULL text column is coherent and the approved design holds
+together.
+
+The revised assessment is in `docs/PHASE4_DECISION_TABLE.md`:
+`sentence_text` should be restored as a single NOT NULL column whose content
+is determined by `record_type`. DOC-2 is withdrawn.
 
 ## 14. `gold_annotation`
 

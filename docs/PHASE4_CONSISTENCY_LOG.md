@@ -712,3 +712,55 @@ day, which is what Strategy A had to demonstrate.
 
 **Status:** frozen, equivalent to the models, and verified on PostgreSQL 16.
 The baseline is now a fixed historical record.
+
+---
+
+## Decision-table revision — 2026-11-05
+
+### C-37 Three audit findings withdrawn or reversed after team challenge
+
+The team challenged D-2, D-6, D-7 and DOC-2, asking for each to be
+demonstrated against the actual implementation and the actual sources rather
+than argued. All three challenges were correct.
+
+**D-6 reversed.** I claimed `practice_id NOT NULL` made a
+Declared-not-in-policy verdict unrepresentable. It does not. F-19 takes the
+declaration state as a separate input, so a declared category with no policy
+practice needs an empty judgement list. Run against the committed code, an
+empty list yields Declared-not-in-policy with its F-21 absence record, and all
+five verdicts are reachable using only practice-backed judgements with no
+`declared_practice_id`. An existing passing test,
+`test_declared_not_in_policy_with_no_judgements_at_all`, already demonstrated
+this; I wrote it and then argued against it. Revised recommendation: restore
+the approved NOT NULL structure. Reclassified from implementation deviation to
+**compliance restoration**.
+
+**D-7 reversed and DOC-2 withdrawn.** I claimed §10.2 made
+`evidence_record.sentence_text` NOT NULL while the same row required it to be
+null for absence records. The note nulls `segment_id` and the offsets, not the
+text. F-21 requires an absence record to store a fixed system-generated
+statement and F-22 requires an inconclusive record to store candidate text, so
+every record type carries text and a NOT NULL column is coherent. There is no
+contradiction in the approved report on this point. Revised recommendation:
+restore the single NOT NULL `sentence_text` column with content determined by
+`record_type`. Reclassified to **compliance restoration**.
+
+**D-2 withdrawn.** I asserted that Google's Data Safety form produces explicit
+per-category negatives. I did not check whether any reach us. The published
+section appears to be positive-only, and our acquisition layer does not exist,
+so nothing in this project has ever read a declaration. The recommendation is
+withdrawn. The distinctions that do appear to exist — an app-level "declares
+no collection" statement, and a parsed-but-empty versus could-not-parse
+status — are both app-level and belong with finding **E-2**, which should be
+reconsidered on its own merits.
+
+**Pattern worth recording.** Four of twelve positions were wrong in the same
+direction: I read the approved design as defective where it was not, and
+credited the implementation with corrections it had not made. The common cause
+was arguing from the data dictionary alone without reading the function
+specifications in §4.2 that govern the same structures.
+
+**Effect on the balance of findings:** the revised table has seven compliance
+restorations, two implementation deviations, one document correction and two
+withdrawals, where the first edition claimed six changes and three amendments
+to the approved design.
