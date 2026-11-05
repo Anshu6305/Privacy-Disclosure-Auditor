@@ -1440,3 +1440,54 @@ a column introduced by 0003, without taking the `schema_at_head` fixture. The
 next such test cannot be written without the guard.
 
 **Status:** resolved. Option A and all three migrations unchanged.
+
+### C-63 Full migration-chain verification passed on PostgreSQL 16
+
+Log `migration_verification_20261106_000146.log`, database
+`privacy_auditor_m3b_20261105d_test`, 2026-11-06. **Every stage passed.**
+
+| Stage | Result |
+|---|---|
+| Chain and head, from the graph | `0001_baseline -> 0002_pattern_ops -> 0003_collection_event` |
+| Upgrade | recorded at head |
+| Operator classes, from `pg_opclass` | both `_pattern` **`text_pattern_ops`**, both originals `text_ops` |
+| Collation | `en_US.utf8` |
+| Integration tests at head | **56 passed, 0 skipped** |
+| Downgrade to baseline | both pattern indexes removed, both baseline indexes retained |
+| Integration tests at baseline | **37 passed, 19 skipped, 0 failed** — guards fired |
+| Re-upgrade | head restored, operator classes re-checked, collection-event columns present |
+| ALG-11 diagnostic | **index used: yes** on both prefix predicates |
+
+**The predicted plans were observed, not assumed.** C-53's note predicted
+`Index Cond` using the pattern operators and a `BitmapOr` for the combined
+query. What PostgreSQL produced:
+
+```
+lower(app_name) LIKE 'wha%'
+  Index Scan using ix_application_lower_name_pattern
+    Index Cond: lower(app_name) ~>=~ 'wha' AND lower(app_name) ~<~ 'whb'
+
+F-01 as implemented (both columns, OR)
+  Sort (lower(app_name), package_name)
+    Bitmap Heap Scan
+      BitmapOr
+        Bitmap Index Scan on ix_application_lower_name_pattern
+        Bitmap Index Scan on ix_application_lower_package_pattern
+```
+
+The `Sort` reappearing above the bitmap scan was predicted too: a bitmap scan
+does not preserve order. On at most 20 rows it is free.
+
+**No performance claim.** `enable_seqscan` was off, which establishes
+eligibility. At 300 to 500 rows PostgreSQL will still prefer a sequential
+scan, and that is the correct plan. What the correction buys is that the
+approved **O(log N + m)** claim is now true rather than aspirational.
+
+**C-53 and C-59 are closed.** The ALG-11 index correction and the D-1 Option A
+collection-event restoration are both **Tested and verified** on PostgreSQL 16,
+including upgrade, downgrade and re-upgrade.
+
+Five defects were found and fixed across the verification runs — C-56, C-57,
+C-58, C-60, C-61, C-62 — **every one of them in verification code, none in the
+schema changes themselves.** Both migrations were correct on their first
+application.

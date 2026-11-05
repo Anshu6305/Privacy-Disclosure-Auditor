@@ -2150,3 +2150,55 @@ guarded names.
 
 Expected next run: step 9 **56 passed, 0 skipped**; step 10b green with skips
 and **no failures**; step 10c head and schema restored.
+
+---
+
+## 2026-11-06 — C-63: the whole chain verified on PostgreSQL 16
+
+Every stage passed. `privacy_auditor_m3b_20261105d_test`, log
+`migration_verification_20261106_000146.log`.
+
+- Upgrade `0001_baseline -> 0002_pattern_ops -> 0003_collection_event`
+- Operator classes: both `_pattern` indexes `text_pattern_ops`, both originals
+  `text_ops`; collation `en_US.utf8`
+- **56 passed, 0 skipped** at head
+- Downgrade: both pattern indexes removed, both baseline indexes retained
+- **37 passed, 19 skipped, 0 failed** at the baseline — the guards fired
+  instead of the three failures the previous run produced
+- Re-upgrade restored the head revision, the operator classes **and** the
+  collection-event columns
+
+### The predicted plans were observed, not assumed
+
+C-53's note predicted an `Index Cond` using the pattern operators and a
+`BitmapOr` for the combined query. PostgreSQL produced exactly that:
+
+```
+Bitmap Heap Scan
+  BitmapOr
+    Bitmap Index Scan on ix_application_lower_name_pattern
+      Index Cond: lower(app_name) ~>=~ 'wha' AND lower(app_name) ~<~ 'whb'
+    Bitmap Index Scan on ix_application_lower_package_pattern
+```
+
+The `Sort` above the bitmap scan was predicted too — a bitmap scan does not
+preserve order — and on at most 20 rows it is free. `enable_seqscan` was off,
+so this is eligibility; at 300 to 500 rows a sequential scan remains the
+correct plan and no performance improvement is claimed.
+
+### Closed
+
+**C-53** and **C-59** are both **Tested and verified**. The ALG-11 index
+correction and the D-1 Option A collection-event schema are confirmed on the
+database the system will run on, including a full down-and-up round trip.
+
+### The pattern across six defects
+
+C-56, C-57, C-58, C-60, C-61, C-62 — **every one in verification code, none in
+the schema changes.** Both migrations were correct on first application. Five
+of the six were the same mistake wearing different clothes: an assertion that
+assumed a migration state it had not checked. That class is now closed
+statically by three `ast`-based tests.
+
+Worth carrying into M3B Part 2: the risk in this project is not the change,
+it is the code that claims to check the change.

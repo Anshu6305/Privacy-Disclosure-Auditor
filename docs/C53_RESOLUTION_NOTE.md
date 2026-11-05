@@ -1,7 +1,15 @@
 # C-53 resolution note — ALG-11 index usability
 
 Date: 2026-11-05 · revised 2026-11-05 after implementation
-Status: **RESOLVED — tested and verified on PostgreSQL 16, 2026-11-05.**
+Status: **CLOSED — fully verified on PostgreSQL 16, 2026-11-06.**
+
+Final verification, log `migration_verification_20261106_000146.log`: the
+predicted plans were observed. `lower(app_name) LIKE 'wha%'` uses
+`ix_application_lower_name_pattern` with `Index Cond: lower(app_name) ~>=~
+'wha' AND ~<~ 'whb'`; the combined F-01 query uses a `BitmapOr` over both
+pattern indexes, with the `Sort` reappearing above the bitmap scan exactly as
+section 4 predicted. `enable_seqscan` was off, so this is eligibility, not a
+performance measurement, and none is claimed.
 
 **Measured on the team Mac, 2026-11-05:**
 
