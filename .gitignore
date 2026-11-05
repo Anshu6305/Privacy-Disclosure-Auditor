@@ -50,3 +50,6 @@ Thumbs.db
 *.log
 tmp/
 .DS_Store
+
+# C-53 verification logs, produced by scripts/verify_c53.sh
+c53_verification_*.log

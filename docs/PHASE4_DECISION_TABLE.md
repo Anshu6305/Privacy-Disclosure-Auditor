@@ -2,6 +2,9 @@
 
 Prepared: 2026-11-05
 Revised: 2026-11-05 after team challenge to D-2, D-6, D-7 and DOC-2
+Revised: 2026-11-05 — **D-1 ruled: Option A.** The approved Phase 3 §10.2
+design stands; the implemented per-source split is a deviation to be corrected
+in M3B Part 2. DOC-1 resolves with it.
 For: team review; DOC-1 and DOC-2 for the faculty guide
 Source: `docs/PHASE4_SCHEMA_BASELINE_AUDIT.md`
 
@@ -43,7 +46,7 @@ implementation with corrections it had not made.
 
 | ID | Issue | Revised recommendation | Class |
 |---|---|---|---|
-| D-1 | Snapshot granularity: per source, not per collection event | Keep the split | **Implementation deviation** |
+| D-1 | Snapshot granularity: per source, not per collection event | **RULED 2026-11-05: Option A.** Restore the approved Phase 3 §10.2 single collection-event snapshot. Option B is not to be implemented | **Decided** |
 | D-2 | Explicit negative declarations | **Withdrawn.** No schema change | — |
 | D-3 | `model_version` task vocabulary | Adopt the approved values | **Compliance restoration** |
 | D-4 | `trained_at` nullable | Keep | **Implementation deviation** |
@@ -53,7 +56,7 @@ implementation with corrections it had not made.
 | D-8 | `evaluation_run` records one model, not four versions | Restore all four | **Compliance restoration** |
 | D-9 | Metric breakdown by class, not category | Support both | **Compliance restoration** plus an addition |
 | D-10 | Confidence columns FLOAT, not `numeric(5,4)` | Convert the remaining three | **Compliance restoration** |
-| DOC-1 | §10.2 and §10.3 disagree on the FK count | Amend whichever section D-1 does not support | **Document correction** |
+| DOC-1 | §10.2 and §10.3 disagree on the FK count | **Resolved by the D-1 ruling:** Option A gives `audit_run` six NOT NULL foreign keys, so **§10.3's "seven" is the error** and is amended to six. §10.2 stands as approved | **Document correction, resolved** |
 | DOC-2 | `sentence_text` NOT NULL vs null offsets | **Withdrawn — not a contradiction** | — |
 
 Seven compliance restorations, two implementation deviations, one document

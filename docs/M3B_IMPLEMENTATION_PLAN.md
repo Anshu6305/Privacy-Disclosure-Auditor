@@ -10,7 +10,33 @@ Scope: F-01 to F-07, requirements FR-01 to FR-07, task T1.
 | **Completed** | F-01 `searchApplications`, F-03 `handleUnknownApplication`, `ApplicationRepository`. Commit `fc1a111`. 43 unit tests |
 | **Verified** | **43 PostgreSQL integration tests passed** on `privacy_auditor_frozen_20261105_test`, 2026-11-05 — 29 schema + 14 F-01 search. Results are correct on real PostgreSQL, not only on SQLite. C-53's own 10 tests are **written but not yet run against a server** |
 | **Pending** | F-02 `requestAudit`, F-04 `loadDeclaration`, F-05 `loadPolicyDocument`, F-06 `fetchLiveDisclosure` persistence, F-07 `recordProvenance` persistence, the corpus import command |
-| **Blocked** | All five pending functions, on the **D-1 faculty decision**. Nothing else blocks them |
+| **Blocked** | Nothing. **D-1 ruled 2026-11-05: Option A** — the approved Phase 3 §10.2 single collection-event snapshot. Option B is not to be implemented. M3B Part 2 awaits C-53 verification and explicit approval |
+
+### D-1 ruling — what it means for the work
+
+**Option A is the approved design, and the implementation deviated from it.**
+`disclosure_snapshot` must be restored to one row per collection event, and
+`audit_run` to six NOT NULL foreign keys instead of seven. That is a
+restructuring migration (`0003`), new and reversible; `0001_baseline_schema.py`
+and `0002_pattern_ops` are not modified. DOC-1 resolves with it: §10.3's
+"seven" becomes six and §10.2 stands.
+
+One sub-decision follows from Option A and is needed before F-07 can be
+written — §5 of this plan set it out as A1 against A2. **A1 will be
+implemented unless the team says otherwise:** `source_url_listing` nullable,
+with a snapshot `status` recording the outcome (the E-2 column, whose
+vocabulary the restored design requires). A2 — a separate per-source retrieval
+table — is rejected here because it adds a seventeenth table that no approved
+document contains, which is a larger departure than the deviation being
+corrected.
+
+The cost of A1 is recorded rather than hidden: per-source HTTP status, byte
+count and failure reason have nowhere to live, so M3A's `Provenance` objects
+are merged on persistence and that detail is lost at the database boundary. It
+remains available in the filesystem corpus record. Phase 1 named scraper
+breakage the highest-probability risk, so partially retrieved collection events
+are expected to be common, and `status` is what keeps them honest — a failed
+source must never read as an absent declaration.
 
 Two findings were open; one is now corrected. **C-53** (the ALG-11 functional
 indexes are inert for the prefix predicate) was confirmed by diagnostic and

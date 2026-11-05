@@ -90,7 +90,12 @@ additive `0002_pattern_ops`. `privacy_auditor` is still at neither.
 
 ## Open items requiring the team
 
-0. **Rule on D-1** — one `disclosure_snapshot` per collection event (Phase 3
+0. ~~**Rule on D-1**~~ **RULED 2026-11-05: Option A** — the approved Phase 3
+   §10.2 single collection-event snapshot. Option B is not implemented. M3B
+   Part 2 restores it in revision `0003`; DOC-1 resolves with it (§10.3's
+   "seven" foreign keys becomes six). Superseded text:
+
+   **Rule on D-1** — one `disclosure_snapshot` per collection event (Phase 3
    §10.2 as approved) or one per source (as implemented). Both options are
    costed in `docs/M3B_IMPLEMENTATION_PLAN.md` §5 and §6. **This is the single
    item blocking M3B**, and Option B additionally needs faculty approval and a

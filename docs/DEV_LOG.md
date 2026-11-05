@@ -1540,3 +1540,91 @@ Documentation and one script. `ruff check .` → all checks passed.
 `pytest tests -p no:warnings` → **461 passed, 53 skipped**, unchanged. No
 model, migration, query or database touched. C-53 remains **Implemented**, not
 verified.
+
+---
+
+## 2026-11-05 — D-1 ruled Option A; C-53 verification reduced to one script
+
+### D-1: Option A
+
+The approved Phase 3 §10.2 design stands — one `disclosure_snapshot` per
+collection event. Option B is not implemented.
+
+**No approved requirement changes.** What changes is the implementation, which
+deviated: `disclosure_snapshot` carries `source_type`, one `source_url` and one
+`content_sha256` per row, and `audit_run` carries two snapshot foreign keys.
+M3B Part 2 restores the approved structure in a new reversible revision
+`0003`; `0001_baseline_schema.py` and `0002_pattern_ops` are not modified.
+
+**DOC-1 resolves with it.** Under Option A `audit_run` has six NOT NULL foreign
+keys, so §10.3's "seven" is the error and becomes six. §10.2 stands as
+approved. **E-2 is satisfied** by the restored design's `status` column, whose
+value vocabulary still has to be defined and will be recorded in the change log
+when it is.
+
+Recorded in the decision table, the requirement change log, the M3B plan and
+the tracker.
+
+**One sub-decision follows, and I am not stopping to ask it.** Option A has to
+handle a collection event where one source was retrieved and the other failed.
+§5 of the M3B plan set out A1 against A2. **A1 will be implemented unless the
+team objects:** `source_url_listing` nullable, with the snapshot `status`
+recording the outcome. A2 — a per-source retrieval side table — is rejected
+because it adds a seventeenth table no approved document contains, a larger
+departure than the deviation being corrected.
+
+A1's cost is recorded rather than hidden: per-source HTTP status, byte count
+and failure reason have nowhere to live, so M3A's two `Provenance` objects are
+merged on persistence and that detail stops at the database boundary. It
+survives in the filesystem corpus record. Phase 1 named scraper breakage the
+highest-probability risk, so partial events are expected to be common, and
+`status` is what stops a failed source reading as an absent declaration.
+
+### C-53: one script instead of twelve manual steps
+
+`scripts/verify_c53.sh`. Discovers the Compose service from the configuration,
+checks the daemon and container health, refuses to continue if the disposable
+name exists, creates it, migrates only it, verifies `alembic_version`, reads
+operator classes from `pg_opclass`, reads the collation, runs the 53
+integration tests, downgrades, asserts both pattern indexes are gone and both
+baseline indexes remain, re-runs the tests to prove the skip gate fires,
+re-upgrades, and runs the diagnostic. Everything is tee'd to a timestamped log
+so the output can be pasted back in full.
+
+Safety is enforced rather than described: the three protected database names
+are checked against the target and the script aborts on a match; it aborts if
+the disposable database already exists; **there is no `DROP` anywhere in the
+file**; and no password is typed, printed or passed on a command line — inside
+the container `psql` reads the container's own `$POSTGRES_PASSWORD`, and on the
+host the URL comes from `scripts/test_database_url.py` into a variable.
+
+### A bug in my own helper, found by testing it
+
+The first version of the in-container `psql` wrapper was:
+
+```sh
+sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" exec psql -U "$POSTGRES_USER" -d "$1" "$@"' _ "$@"
+```
+
+`"$@"` still contains `$1`, so the database name was passed **twice** — psql
+reads the second as another dbname. Demonstrated rather than reasoned about:
+
+```
+$ sh -c 'echo "db=[$1] args=[$*]"' _ mydb -tAc "SELECT 1"
+db=[mydb] args=[mydb -tAc SELECT 1]          # wrong
+
+$ sh -c 'db="$1"; shift; echo "db=[$db] args=[$*]"' _ mydb -tAc "SELECT 1"
+db=[mydb] args=[-tAc SELECT 1]               # fixed
+```
+
+The service-discovery parser was also tested against compose-shaped JSON,
+including the two-postgres-services case, which it rejects rather than guessing.
+
+### Verified
+
+`bash -n` clean. `ruff check .` → all checks passed. `pytest tests
+-p no:warnings` → **461 passed, 53 skipped**, unchanged. The verification log
+pattern is git-ignored.
+
+**C-53 is still Implemented, not verified.** Nothing in this entry ran against
+PostgreSQL.

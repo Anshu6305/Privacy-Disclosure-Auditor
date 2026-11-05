@@ -96,3 +96,33 @@ Two things worth recording here even though neither is a change request:
    not carry fields they assume, that correction will be made in the adapter
    and recorded here **only if** it affects an approved requirement. A change
    to the corpus format alone does not.
+
+---
+
+## D-1 ruled: Option A — no requirement changes
+
+Date: 2026-11-05. **This entry records that no approved requirement changes.**
+
+The team ruled for **Option A**: one `disclosure_snapshot` row per collection
+event, exactly as approved in Phase 3 §10.2. Option B, the per-source split, is
+not to be implemented.
+
+So the approved design is unchanged, and what must change is the
+**implementation**, which deviated from it. `disclosure_snapshot` currently
+carries `source_type`, one `source_url` and one `content_sha256` per row, and
+`audit_run` carries two snapshot foreign keys. M3B Part 2 restores the approved
+structure in a new reversible revision; `0001_baseline_schema.py` and
+`0002_pattern_ops` are not modified.
+
+Two consequences recorded here because they touch approved documents:
+
+1. **DOC-1 resolves.** Under Option A `audit_run` has **six** NOT NULL foreign
+   keys, so Phase 3 §10.3's "seven" is the error and is amended to six. §10.2
+   stands as approved.
+2. **E-2 is satisfied by the restored design**, which includes a snapshot
+   `status`. The value vocabulary still has to be defined, and will be recorded
+   here when it is, because it is a new closed value set rather than an
+   approved one.
+
+Still not represented by any approved column, and **not** being added without
+approval: `SecurityPractices`. See `docs/M3B_IMPLEMENTATION_PLAN.md` §7.
