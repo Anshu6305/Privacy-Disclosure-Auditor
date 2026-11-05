@@ -1595,3 +1595,40 @@ integrated offline-first.
 zero Android applications collected, live retrieval has never reached Google,
 no Data Safety parser exists, `SecurityPractices` has no column, and no
 end-to-end audit has run.
+
+### C-67 M6 implemented; no model trained, and the reason is recorded
+
+**Approved design:** F-11 improved, F-12 span extraction, F-18 semantic
+alignment via D-01 Option A.
+
+**What was built:** all three, with the model behind each behind an injected
+protocol, so the decision logic is tested without torch. 36 new tests; 587
+passed overall; ruff clean.
+
+**What was not:** **nothing is trained and no model metric exists.** The
+session can reach PyPI but not the Hugging Face hub (403 through the proxy),
+so no pretrained encoder can be downloaded. `backend/requirements-ml.txt`
+already anticipated this by directing GPU training to Colab or Kaggle; the
+training scripts run wherever the hub is reachable, and both `--dry-run` paths
+were executed here.
+
+**The genuinely verified part is F-12's dataset.** 23,150 spans extracted from
+the released OPP-115 annotations and kept only when
+`segment_text[start:end]` matches the annotator's highlight: 11,913 data type,
+11,237 purpose, across 115 policies. 294 rejected (0.9%) and reported rather
+than adjusted — a corrected offset would be a guess at which words the
+annotator meant.
+
+**One design correction during implementation.** The improved classifier first
+set its own abstention flag with a decision-confidence rule. That contradicted
+F-14, which owns the decision, and the rule could never fire at a 0.50
+threshold because `max(p, 1-p) >= 0.5` always. Removed: the improved variant
+now matches the baseline's contract exactly, returning `abstained=False` for
+the gate to set, and a test runs the gate over its output to prove it.
+
+**Pending on annotation, and not invented:** F-18's 300–500
+policy-statement/Data-Safety-claim pairs and the ~100-application gold set.
+Different units, neither created.
+
+**Status:** M6 implemented and logic-verified. **Not trained, not evaluated.**
+The M5 baseline remains the only evaluated classifier in the project.

@@ -39,7 +39,7 @@ can run (§2.2).
 | M3B Acquisition persistence | R2, R5 | **Tested and verified** | F-01 to F-07 implemented and PostgreSQL-verified 2026-11-06 (C-66): **72 integration tests passed, 0 skipped** at head. Offline corpus import works; live retrieval integrated offline-first and **never run against a live source**; corpus is **empty** |
 | M4 Text processing | R3 | **Tested and verified** (on fixtures; never run on a real policy) | F-08, F-09, F-10; 78 tests. Offsets index the cleaned text and are slice-verified |
 | M5 Baseline ML | R3 | **Tested and verified** | F-11 baseline, ALG-2. Held-out test macro-F1 0.7489, micro-F1 0.7690. Two categories unevaluable |
-| M6 Improved ML | R1, R3 | **Blocked** | Option A decided (D-01). Needs 300-500 labelled pairs and the gold set; neither exists |
+| M6 Improved ML | R1, R3 | **Implemented, not trained** | F-11 improved, F-12 and F-18 zero-shot implemented and logic-tested; **no model trained, no metric produced**. F-12's span dataset is real and verified: 23,150 slice-verified spans. Training needs a downloadable checkpoint — run on the Mac or Colab. F-18 fine-tuning still needs 300–500 labelled pairs, which do not exist |
 | M7 Verdict and evidence engine | R1 | **Implemented**, not verified end to end | ALG-8 precedence implemented with structural abstention propagation. F-14, F-16, F-17, F-19, F-20, F-21, F-22 complete; E-5 verdict confidence restored via `_deciding_confidence`. **F-15 mechanism only — no mapping rules authored.** F-18 excluded, stays in M6. **Never run on a real application:** every test uses controlled fixtures |
 | M8 Backend integration and persistence | R4 | **Not started** | Verdicts are not persisted; the engine writes nothing |
 | M9 Frontend | R6 | **Not started** | |
@@ -87,6 +87,8 @@ working. Recorded plainly so the viva answer is the same as the tracker:
 | Functions with no database path yet | F-02, F-04 to F-07 (M3B part 2), F-28 to F-34 (M8). F-01 and F-03 now have one |
 | Learning tasks trained | 1 of 3. F-11 baseline only; F-12 and F-18 have no training data |
 | Gold set | Does not exist |
+| F-18 fine-tuning pairs | **0** of 300–500. A different unit from the gold set |
+| F-12 span supervision | **23,150 verified spans** from OPP-115 — the one ML dataset that does exist beyond the segment labels |
 | Taxonomy mapping rules (F-15) | **None authored.** The lookup mechanism works; it has nothing to look up |
 | Thresholds | All provisional at 0.50, uncalibrated |
 

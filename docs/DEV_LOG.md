@@ -2444,3 +2444,77 @@ Android applications collected; live retrieval has never reached Google; no
 Data Safety parser exists, so a real live collection today yields a partial
 event; `SecurityPractices` has no column; no end-to-end audit has run — F-02
 queues, and nothing consumes the queue until M8.
+
+---
+
+## 2026-11-06 — M6: implemented and logic-tested; nothing trained
+
+**587 passed, 72 skipped; ruff clean.** 36 new tests. Full report in
+`docs/M6_REPORT.md`.
+
+**No model was trained and no model metric exists.** The session reaches PyPI
+but not the Hugging Face hub (403 through the proxy), so no pretrained encoder
+can be downloaded here. `requirements-ml.txt` already directed GPU training to
+Colab or Kaggle, so this is the arrangement the plan anticipated rather than a
+surprise. Both training scripts have a `--dry-run` that reports the split and
+configuration and trains nothing; both were executed, and their output is
+real.
+
+### The part that is genuinely verified: F-12's dataset
+
+23,150 spans from the released OPP-115 annotations — 11,913 data type, 11,237
+purpose, across 115 policies and 2,466 segments. A span is kept only when
+`segment_text[start:end]` equals the annotator's highlight after whitespace
+normalisation. 294 were rejected (0.9%) and **counted rather than corrected**:
+a fixed-up offset would be a guess at which words the annotator meant. 8,816
+span-free values are reported separately, because those carry no highlight by
+design — supervision the corpus never offered, not supervision lost.
+
+Only `Personal Information Type` and `Purpose` are treated as span
+supervision, named explicitly so an attribute added to the corpus cannot
+silently become training data.
+
+Offsets: OPP-115 indexes a segment, M4 indexes the cleaned document.
+`to_document_offsets` translates and is tested by slicing on both sides, and
+every `ExtractedSpan` carries a `verify_against` that re-slices before the
+span may be quoted.
+
+### A design error caught by a failing test
+
+The improved classifier initially set its own abstention flag using
+`max(p, 1-p) < threshold`. Two things wrong with it: F-14 owns that decision
+and duplicating it puts one rule in two places, which the M5 authorisation
+forbade; and the rule can never fire at a 0.50 threshold, because
+`max(p, 1-p) >= 0.5` always. The test asserting an uncertain score abstains
+failed, which is how it surfaced.
+
+Removed. The improved variant now matches the baseline's contract exactly —
+same `predict_practices` signature, `abstained=False` on every practice — and
+a test runs the F-14 gate over its output to prove the gate still decides.
+
+### F-18
+
+Zero-shot, as D-01 approved. Premise is the policy sentence verbatim;
+hypothesis states the Data Safety claim. A declaration denying both actions is
+phrased as a denial rather than positively, because relying on `CONTRADICTS`
+to invert it would invert the judgement.
+
+Abstention is not a fourth label: a low-confidence judgement keeps its label
+and flags `model_abstained`, and `AlignmentJudgement` ORs that with upstream
+uncertainty. A candidate with no premise comes back `NO_MATCH` with confidence
+0.0 **and** abstained — the model was never consulted, so a confident
+`NO_MATCH` would be a claim nobody made.
+
+The backend reads the checkpoint's own `id2label` and refuses one that does
+not expose all three NLI classes. Assuming the order would silently swap
+entailment and contradiction, inverting every verdict while looking healthy.
+
+### Still dependent on annotation
+
+F-18 fine-tuning needs **300–500** policy-statement/Data-Safety-claim pairs;
+the gold set needs **~100 applications**. Different units, neither exists, and
+nothing here invents either. Under D-01's safeguards zero-shot stands until
+enough reliable annotations exist.
+
+The M5 baseline is untouched and remains the only evaluated classifier in the
+project.

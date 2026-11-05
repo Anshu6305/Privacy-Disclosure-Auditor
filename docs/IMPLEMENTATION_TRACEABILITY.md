@@ -197,9 +197,10 @@ Milestone 1 except F-26 above.
 | F-08 | `analysis/text/extractor.py` | M4 | Implemented and verified |
 | F-09 | `analysis/text/segmenter.py` | M4 | Implemented and verified |
 | F-10 | `analysis/text/validator.py` | M4 | Implemented and verified |
-| F-11 | `analysis/models/practice_classifier.py` | M5, M6 | **Baseline implemented and evaluated**; improved variant is M6 |
-| F-12 | `analysis/models/span_extractor.py` | M6 | Not implemented |
+| F-11 | `analysis/models/practice_classifier.py` (M5); `analysis/models/improved_classifier.py` (M6) | M5, M6 | Baseline **implemented and evaluated**. Improved variant **implemented, not trained and not evaluated** — same split, seed and evaluation module, so a comparison is possible once trained |
+| F-12 | `ml/data/opp115_spans.py`, `analysis/models/span_extractor.py` | M6 | **Dataset complete and verified**: 23,150 slice-verified spans (11,913 data type, 11,237 purpose) from 115 policies. BIO encoding, offset translation and decoding tested. **Tagger not trained**; training loop outstanding |
 | F-13 | `analysis/models/variant.py` | M6 | Not implemented |
+| F-18 | `analysis/alignment/nli.py` | M6 | **Zero-shot path implemented** (D-01 Option A): premise/hypothesis construction, the three approved labels, abstention preserved. **Never run against a real NLI checkpoint. Fine-tuning not started** — the 300–500 labelled pairs do not exist |
 | F-14 | `analysis/confidence/gate.py` | M7 | Implemented and verified |
 | F-15 | `analysis/mapping/taxonomy_mapper.py` | M7 | Mechanism only — no rules authored |
 | F-16 | `analysis/mapping/declaration_normaliser.py` | M7 | Implemented and verified |

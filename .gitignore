@@ -54,3 +54,7 @@ tmp/
 # Migration verification logs, produced by scripts/verify_migrations.sh
 c53_verification_*.log
 migration_verification_*.log
+
+# Generated F-12 span dataset
+data/processed/opp115_spans.jsonl
+ml/checkpoints/
