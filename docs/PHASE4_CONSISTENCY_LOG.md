@@ -678,3 +678,30 @@ now known to hold in PostgreSQL and not only in the ORM metadata.
 endpoint, worker or pipeline stage has run against this database.
 
 **Status:** the longest-standing open verification gap in Phase 4 is closed.
+
+### C-36 Alembic baseline frozen
+
+**Approved:** Strategy A from audit Part 4, with seven safeguards.
+
+**What happened:** `0001_baseline` was rewritten from a metadata build into 16
+explicit `op.create_table` calls and 21 `op.create_index` calls carrying all
+28 CHECK constraints, 8 UNIQUE constraints and 27 foreign keys, with a matching
+downgrade. Rendered by Alembic's own renderer against the PostgreSQL dialect,
+not hand-written; the generator is kept for reproducibility.
+
+**Why rewriting an existing revision was safe:** the read-only check on
+2026-11-05 confirmed the project database had never been migrated. The only
+database stamped with the old definition is `privacy_auditor_test`, which was
+left untouched per safeguard 1 and is now superseded.
+
+**Equivalence:** `tests/unit/test_migration_is_frozen.py` applies the revision
+to an empty database and compares every table, column, nullability, index,
+unique constraint, check constraint and foreign key against `Base.metadata`.
+Ten tests, all passing. A model change made without a new revision now fails
+the suite.
+
+**Obsolete placeholder removed:** the unconditional skip that marked the
+unverified-PostgreSQL gap served its purpose and was deleted along with its
+file, whose other two tests are superseded by the equivalence suite.
+
+**Status:** frozen and equivalent on SQLite. **Not yet applied to PostgreSQL.**

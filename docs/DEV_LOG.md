@@ -540,3 +540,92 @@ database holds no rows from the run.
   from audit Part 4 is now the confirmed path.
 - Class D findings D-1 to D-10, and DOC-1 and DOC-2, still await rulings.
 - `practice_type` and `scope` still have no defined vocabulary.
+
+---
+
+## 2026-11-05 — Alembic baseline frozen (Strategy A)
+
+Team approved Strategy A with seven safeguards. No existing database was
+dropped, reset, recreated or modified; no `docker compose down -v`; no
+`DROP DATABASE`.
+
+### What was done
+
+`0001_baseline_schema.py` no longer calls `Base.metadata.create_all()`. It now
+contains 16 explicit `op.create_table` calls and 21 `op.create_index` calls,
+with all 28 CHECK constraints, 8 UNIQUE constraints and 27 foreign keys
+written out, plus a matching downgrade.
+
+The body was **rendered by Alembic's own `render_python_code`** against the
+PostgreSQL dialect rather than written by hand or transcribed. The generator
+is kept at `backend/migrations/freeze_baseline.py` so the derivation is
+reproducible. The revision id is unchanged at `0001_baseline`.
+
+**One deliberate edit to the rendered output.** Alembic rendered `func.now()`
+as `sa.text('now()')` because it was asked to render for PostgreSQL, and
+`now()` is not a SQLite function, so the revision could not run on SQLite at
+all. The models declare `func.now()`, which every dialect understands, so the
+rendered text was replaced with `sa.func.now()`. Seven occurrences. Recorded in
+the migration's own docstring.
+
+### Equivalence verified
+
+`tests/unit/test_migration_is_frozen.py`, 10 tests, all passing. It applies the
+revision to an empty database and compares the result against `Base.metadata`:
+
+| Checked | Result |
+|---|---|
+| Revision contains no `create_all` or `drop_all` in its function bodies | Pass |
+| 16 `create_table`, 21 `create_index`, 16 `drop_table` | Pass |
+| Revision id, down_revision and expected table count unchanged | Pass |
+| Created tables equal the model tables | Pass |
+| Every column name and nullability matches, table by table | Pass |
+| Indexes match, with the two functional ones checked in source | Pass |
+| 8 UNIQUE constraints match | Pass |
+| 28 CHECK constraints match | Pass |
+| 27 foreign keys match | Pass |
+| Downgrade leaves no tables behind | Pass |
+
+The frozen-check test inspects the `upgrade` and `downgrade` function bodies
+via `ast` rather than searching the whole file, because the module docstring
+legitimately names `create_all` while explaining why it is gone. A naive
+substring search flagged the prose, which is how that was found.
+
+### The skipped test, identified
+
+Safeguard 6. The single skip in the 29-passed run was
+`tests/integration/test_migration_baseline.py::test_postgresql_schema_is_not_verified_here`.
+
+It was a placeholder written during Milestone 2, an unconditional
+`pytest.skip` whose only purpose was to keep the unverified-PostgreSQL gap
+visible in the test report rather than letting it be forgotten. It asserted
+nothing. The gap it marked was closed on 2026-11-05 by the 29 real tests, so
+the placeholder is obsolete and has been removed along with its file. The
+file's other two tests were superseded: `test_baseline_creates_exactly_the_sixteen_tables`
+and `test_schema_round_trips_create_and_drop` are both covered, more strictly,
+by `test_migration_is_frozen.py`.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pytest tests` | **197 passed, 29 skipped** |
+| `ruff check .` | All checks passed |
+| Frozen-migration equivalence | 10 passed |
+
+The 29 skips are the PostgreSQL suite, which skips without `TEST_DATABASE_URL`.
+There is no longer any unconditional skip in the suite.
+
+### Outstanding for the team to run
+
+The frozen migration has **not** yet been applied to a PostgreSQL database.
+Verification against a newly created, uniquely named database is the next step
+and requires commands on the team machine; it creates a new database and
+touches neither `privacy_auditor` nor `privacy_auditor_test`.
+
+### Note on `privacy_auditor_test`
+
+That database remains stamped `0001_baseline` from the **previous**,
+metadata-built version of the revision. It was not modified, per safeguard 1.
+It should now be treated as superseded: the authoritative verification is the
+new database created for the frozen revision.
