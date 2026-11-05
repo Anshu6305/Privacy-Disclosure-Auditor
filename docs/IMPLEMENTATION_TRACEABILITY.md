@@ -188,11 +188,11 @@ Milestone 1 except F-26 above.
 | F-id | Planned module | Milestone | Status |
 |---|---|---|---|
 | F-01 | `backend/app/db/repositories/application_repo.py` | M3B | **Implemented and PostgreSQL-verified** — ALG-11 prefix search; 43 unit + 14 integration tests passed 2026-11-05. **C-53 correction implemented** as `0002_pattern_ops`; its catalogue and EXPLAIN tests await a PostgreSQL run |
-| F-02 | `backend/app/services/audit_service.py` | M3B | **Implemented** — refusal-first: 7 distinct refusal reasons, 15 tests. A partial collection event is refused, never queued |
+| F-02 | `backend/app/services/audit_service.py` | M3B | **Implemented** — refusal-first: 7 refusal reasons, 15 unit + 2 PostgreSQL tests. A partial collection event is refused, never queued |
 | F-03 | `backend/app/db/repositories/application_repo.py` | M3B | **Implemented** — reports absence, never raises, never permits an audit request |
 | F-04 | `acquisition/declaration.py` (M3A); `backend/app/db/repositories/snapshot_repo.py` (M3B) | M3A/M3B | **Implemented** — normalisation and database round trip. Returns `None`, never an empty declaration, when the section was not read |
 | F-05 | `acquisition/policy_document.py` (M3A); `snapshot_repo.load_policy_document` (M3B) | M3A/M3B | **Implemented** — path resolution and SHA-256 re-verification on every load; a changed document is refused |
-| F-06 | `acquisition/gateway.py`, `acquisition/adapters.py` | M3A | **Partially implemented** — gateway, rate limiting, caching, error handling done and tested. **Never run against a live source** |
+| F-06 | `acquisition/gateway.py`, `acquisition/adapters.py` (M3A); `backend/app/services/acquisition_service.py` (M3B) | M3A/M3B | **Implemented** — gateway wired to snapshot and provenance persistence; offline-first, rate-limited, failures classified. **Never run against a live source**; no Data Safety parser exists, so a fetched page is recorded `parse_failed`, not as an absent declaration |
 | F-07 | `acquisition/provenance.py` (M3A); `snapshot_repo.record_collection_event` (M3B) | M3A/M3B | **Implemented** — one collection event per record, `status` derived from what was captured, previous event superseded not overwritten |
 | F-08 | `analysis/text/extractor.py` | M4 | Implemented and verified |
 | F-09 | `analysis/text/segmenter.py` | M4 | Implemented and verified |

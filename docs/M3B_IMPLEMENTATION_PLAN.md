@@ -5,6 +5,42 @@ Scope: F-01 to F-07, requirements FR-01 to FR-07, task T1.
 
 ## 0. Status at a glance
 
+### Completion report — 2026-11-06
+
+| Function | Module | Status |
+|---|---|---|
+| F-01 search | `application_repo.search` | **Tested and verified** (PostgreSQL) |
+| F-02 requestAudit | `services/audit_service.py` | Implemented; PostgreSQL integration tests written |
+| F-03 unknown application | `application_repo.handle_unknown_application` | **Tested and verified** (PostgreSQL) |
+| F-04 loadDeclaration | `snapshot_repo.load_declaration` | Implemented; PostgreSQL integration tests written |
+| F-05 loadPolicyDocument | `snapshot_repo.load_policy_document` | Implemented; PostgreSQL integration tests written |
+| F-06 live retrieval | `services/acquisition_service.py` | Implemented, **never run against a live source** |
+| F-07 provenance persistence | `snapshot_repo.record_collection_event` | Implemented; PostgreSQL integration tests written |
+| Offline corpus import | `scripts/import_corpus.py` | Implemented; **corpus is empty** |
+| D-1 Option A schema | `0003_collection_event` | **Tested and verified** on PostgreSQL 16 (C-63) |
+
+Suite: **546 passed, 72 skipped** on SQLite. The 72 skips are the
+PostgreSQL-only tests. 56 of those passed against PostgreSQL 16 on 2026-11-06;
+**the 16 new M3B Part 2 integration tests have not been run against a server
+yet** — one command, below.
+
+**Remaining limitations, stated rather than buried:**
+
+1. **Zero Android applications collected.** The importer reports "No corpus at
+   data/corpus/apps". The pilot has not begun.
+2. **Live retrieval has never reached Google.** Every F-06 test uses a
+   controlled fake adapter. The service is wired and classified correctly; it
+   has retrieved nothing real.
+3. **No Data Safety parser exists.** A fetched page with no parser is recorded
+   as `parse_failed`, deliberately not as an absent declaration. Writing the
+   parser is a scraping task the team has not done.
+4. **`SecurityPractices` has no column** and none was added. It survives in the
+   filesystem corpus record and takes no part in verdicts.
+5. **No end-to-end audit has run.** F-02 queues; nothing consumes the queue
+   until M8.
+
+
+
 | State | Items |
 |---|---|
 | **Completed** | F-01 `searchApplications`, F-03 `handleUnknownApplication`, `ApplicationRepository`. Commit `fc1a111`. 43 unit tests |

@@ -2287,3 +2287,55 @@ treatment the schema got in C-63, and that needs the Mac.
 `SecurityPractices` still has no column. `load_declaration` rebuilds a
 declaration with the default all-unknown instance rather than inventing four
 `False` values the database never stored.
+
+---
+
+## 2026-11-06 — M3B Part 2 completed: F-06 wired, PostgreSQL tests written
+
+**546 passed, 72 skipped**; ruff clean. New: `services/acquisition_service.py`
+(F-06), `tests/unit/test_live_acquisition.py` (18),
+`tests/integration/test_m3b_persistence_postgresql.py` (16).
+
+### F-06, and the thing it refuses to invent
+
+Live retrieval goes through the existing gateway, so the rate limiter
+(NFR-15), the cache and the failure classification apply unchanged. This
+module adds no transport — and **no scraper**.
+
+The project has no parser for Google's Data Safety markup. A fetched page with
+no parser is therefore recorded as **`parse_failed`** — reached and not
+understood — which is deliberately not the same as the application declaring
+nothing. A stub parser returning an empty declaration would have manufactured
+a disclosure, so the parser is an injected protocol with no implementation
+here. The honest consequence: a live collection today produces a partial
+event, and the tests assert exactly that.
+
+Offline-first is enforced rather than assumed. With no adapter, `collect`
+returns `LiveRetrievalUnavailable` and **persists nothing**; a test asserts
+the database stays empty. A missing policy URL is recorded with its reason
+rather than guessed, because a guessed URL could attribute another
+application's document to this one.
+
+A test asserts only two URLs are requested per application — no crawling —
+and another asserts the rate limiter is applied to both requests, so the
+limiter cannot be bypassed by routing through this service.
+
+### PostgreSQL integration tests
+
+16, covering F-02, F-04, F-05, F-06, F-07: persistence, the three states of
+`declares_no_data_collected` through a real boolean column, JSONB threshold
+round-trip, duplicate handling, supersession, hash re-verification, partial
+events, and two that assert **PostgreSQL itself** rejects a status outside the
+vocabulary and a `complete` status without both URLs.
+
+They skip unless `0003_collection_event` is in the applied ancestry — the C-61
+lesson applied from the start rather than after a failed run.
+
+### Not verified
+
+**The 16 integration tests have not been executed.** They skip here; a skip is
+not a pass. One command on the Mac runs them.
+
+Still true, and stated in the M3B plan's completion report: zero applications
+collected, live retrieval never reached Google, no Data Safety parser,
+`SecurityPractices` has no column, and no end-to-end audit has run.
