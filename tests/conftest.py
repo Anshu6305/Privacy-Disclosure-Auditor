@@ -18,6 +18,18 @@ for path in (ROOT, ROOT / "backend"):
 
 os.environ.setdefault("APP_ENV", "test")
 
+# Unit tests must not read the developer's own .env.
+#
+# Settings resolves .env from the repository root, so once a developer creates
+# one the suite would silently start using their real database credentials and
+# behave differently on their machine than on anyone else's. Setting an empty
+# password explicitly takes precedence over the file and keeps the unit tests
+# hermetic: `engine_or_none()` returns None and no connection is attempted.
+#
+# The PostgreSQL integration tests are unaffected. They never use Settings;
+# they read TEST_DATABASE_URL and build their own engine.
+os.environ["POSTGRES_PASSWORD"] = ""
+
 
 @pytest.fixture
 def api_client():

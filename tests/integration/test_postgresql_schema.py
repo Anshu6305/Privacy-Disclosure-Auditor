@@ -87,6 +87,26 @@ def pg_engine(pg_url: str):
     return engine
 
 
+@pytest.fixture(scope="session", autouse=True)
+def require_migrated_schema(pg_engine):
+    """Fail once, clearly, if the schema was never applied.
+
+    Without this, an unmigrated database produces 28 failures that each look
+    like a different defect — missing types, missing indexes, missing
+    constraints — when the single cause is that no table exists. The first run
+    of this suite did exactly that.
+    """
+    tables = set(inspect(pg_engine).get_table_names())
+    if "application" not in tables:
+        pytest.fail(
+            "The test database has no schema: found "
+            f"{len(tables)} tables. Apply the baseline first:\n"
+            "    cd backend && POSTGRES_DB=<your _test database> "
+            "../.venv/bin/alembic upgrade head\n"
+            "If that command fails, read its error before running these tests."
+        )
+
+
 @pytest.fixture
 def pg_session(pg_engine):
     """A session whose work is always rolled back.
@@ -134,14 +154,24 @@ def test_all_sixteen_tables_exist(pg_engine):
 
 
 def _udt_name(engine, table: str, column: str) -> str:
+    """The PostgreSQL type of one column.
+
+    Fails explicitly when the column is absent rather than returning None,
+    which would surface as ``assert None == 'jsonb'`` and read like a type
+    mismatch instead of a missing column.
+    """
     with engine.connect() as connection:
-        return connection.execute(
+        value = connection.execute(
             text(
                 "SELECT udt_name FROM information_schema.columns "
                 "WHERE table_name = :t AND column_name = :c"
             ),
             {"t": table, "c": column},
         ).scalar()
+
+    if value is None:
+        pytest.fail(f"{table}.{column} does not exist in the database")
+    return value
 
 
 @pytest.mark.parametrize(
@@ -223,6 +253,7 @@ def test_every_declared_check_constraint_exists(pg_engine):
         if isinstance(constraint, CheckConstraint) and constraint.name
     }
     actual = _constraint_names(pg_engine, "c")
+    assert actual, "no CHECK constraints at all; the schema is not applied"
     missing = expected - actual
     assert not missing, f"CHECK constraints missing from PostgreSQL: {sorted(missing)}"
 
@@ -237,11 +268,18 @@ def test_every_declared_unique_constraint_exists(pg_engine):
         if isinstance(constraint, UniqueConstraint) and constraint.name
     }
     actual = _constraint_names(pg_engine, "u")
+    assert actual, "no UNIQUE constraints at all; the schema is not applied"
     missing = expected - actual
     assert not missing, f"UNIQUE constraints missing: {sorted(missing)}"
 
 
 def test_audit_run_foreign_keys_are_all_not_null(pg_engine):
+    """Every reference recorded on an audit must be present.
+
+    The row count is asserted before the nullability. Without it this test
+    passed on an empty database, because "no column is nullable" is trivially
+    true when there are no columns. It did exactly that on the first run.
+    """
     with pg_engine.connect() as connection:
         rows = connection.execute(
             text(
@@ -250,8 +288,15 @@ def test_audit_run_foreign_keys_are_all_not_null(pg_engine):
             )
         ).all()
 
+    assert rows, "audit_run has no identifier columns; the table is missing"
+    # audit_id plus the seven foreign keys.
+    assert len(rows) == 8, f"expected 8 identifier columns, found {len(rows)}"
+
     nullable = [name for name, is_nullable in rows if is_nullable == "YES"]
-    assert not nullable, f"these audit_run references are nullable: {nullable}"
+    assert nullable == ["audit_id"] or not nullable, (
+        f"these audit_run references are nullable: "
+        f"{[n for n in nullable if n != 'audit_id']}"
+    )
 
 
 # ---------------------------------------------------------------------------

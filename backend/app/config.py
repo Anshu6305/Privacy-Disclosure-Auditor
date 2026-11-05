@@ -11,10 +11,21 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+#: The repository root, derived from this file's location rather than from the
+#: current working directory.
+#:
+#: This matters. ``.env`` lives at the repository root, but Alembic must be run
+#: from ``backend/`` because that is where ``alembic.ini`` is. A relative
+#: ``env_file=".env"`` therefore resolved to ``backend/.env``, which does not
+#: exist, so no password was loaded and migrations failed before touching the
+#: database. Anchoring the path here makes configuration independent of where a
+#: command happens to be run from.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=PROJECT_ROOT / ".env", env_file_encoding="utf-8", extra="ignore"
     )
 
     # --- Database ---

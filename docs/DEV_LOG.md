@@ -389,3 +389,77 @@ Team approved proceeding with the class E restorations. Class D deviations were
 - **PostgreSQL still never contacted.** 29 tests ready; none has run.
 - **Migration strategy undecided** — the read-only check in audit Part 4 has not
   been run.
+
+---
+
+## 2026-11-05 — Docker up; first PostgreSQL run exposed three defects
+
+Docker Desktop 29.9.2 installed on the team Mac. `postgres:16-alpine` pulled,
+`auditor_database` healthy on 127.0.0.1:5432. `privacy_auditor_test` created
+alongside the project database.
+
+The read-only check reported `tables: 0`, `alembic_version present: False`,
+confirming the baseline had never been applied anywhere. **Strategy A** from
+audit Part 4 therefore applies: `0001_baseline` can be frozen safely because
+nothing depends on it yet.
+
+### First integration run: 28 failed, 1 passed, 1 skipped
+
+Every failure traced to one cause: `relation "application" does not exist`. The
+schema had never been created in the test database, because
+`alembic upgrade head` failed before touching it.
+
+Three defects found, all mine, all fixed.
+
+**1. Configuration could not be found from the directory Alembic runs in.**
+
+`Settings` declared `env_file=".env"`, which pydantic-settings resolves against
+the current working directory. `.env` is at the repository root, but
+`alembic.ini` is in `backend/`, so Alembic must run from there — where the
+path resolved to `backend/.env`, which does not exist. No password was loaded,
+`env.py` raised its "no database password configured" error, and the migration
+never ran.
+
+Fixed by anchoring the path to the repository root, derived from the location
+of `config.py` rather than from the working directory. Verified by loading
+settings from inside `backend/` and confirming the password resolves.
+
+**2. A test passed on an empty database.**
+
+`test_audit_run_foreign_keys_are_all_not_null` queried
+`information_schema.columns` for `audit_run`, got no rows, and asserted that
+none of those zero rows was nullable — which is trivially true. It was the one
+test that passed, and it passed for the worst possible reason. It now asserts
+that eight identifier columns exist before checking their nullability. The two
+constraint-catalogue tests had the same weakness and now assert a non-empty
+catalogue first.
+
+**3. 28 failures for one cause.**
+
+An unmigrated database produced 28 separate failures that each read like a
+different defect. A session-scoped gate now fails once, naming the cause and
+the command to fix it. `_udt_name` also fails explicitly when a column is
+absent, instead of returning None and surfacing as `assert None == 'jsonb'`,
+which reads like a type mismatch rather than a missing column.
+
+**4. Tests were about to start reading the developer's own `.env`.**
+
+A consequence of fixing defect 1: with `.env` now discoverable from anywhere,
+the unit suite picked up the real database password and
+`test_database_health_reports_unconfigured_without_credentials` failed. The
+suite would have behaved differently on a machine with a `.env` than on one
+without. `conftest.py` now sets an empty password explicitly, which takes
+precedence over the file and keeps the unit tests hermetic. The PostgreSQL
+tests are unaffected; they never use `Settings`.
+
+### Verified after the fixes
+
+| Check | Result |
+|---|---|
+| `pytest tests` | 189 passed, 30 skipped |
+| `ruff check .` | All checks passed |
+| PostgreSQL tests with no server | 29 skipped cleanly |
+
+**PostgreSQL verification has still not been achieved.** The migration has not
+yet been applied and the 29 tests have not yet passed. The next run is the
+first real attempt.

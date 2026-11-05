@@ -616,3 +616,41 @@ restorations could proceed before the migration question is settled.
 The question is not closed. Whether to freeze `0001` (Strategy A) or add
 `0002` (Strategy B) depends on whether the baseline has been applied anywhere,
 which the team has not yet confirmed. The read-only check is in audit Part 4.
+
+---
+
+## 2026-11-05
+
+### C-33 Configuration was not locatable from the Alembic working directory
+
+**What happened:** `Settings` used a relative `env_file=".env"`, resolved
+against the current working directory. Alembic must run from `backend/`, where
+that path does not exist, so no credentials loaded and migrations could never
+run. Found when the first PostgreSQL integration run produced 28 failures, all
+caused by an absent schema.
+
+**Fixed:** the env file path is now derived from the location of `config.py`,
+so configuration resolves identically from the repository root, from
+`backend/`, and from inside a container.
+
+**Follow-on:** with `.env` discoverable, the unit suite began reading the
+developer's real credentials. `conftest.py` now forces an empty password so
+unit tests are hermetic and behave the same on every machine.
+
+**Status:** resolved. No design change; this was an implementation defect.
+
+### C-34 A PostgreSQL test passed vacuously
+
+`test_audit_run_foreign_keys_are_all_not_null` asserted that no column of
+`audit_run` was nullable. On an empty database there are no columns, so the
+assertion held and the test passed while the table did not exist. It was the
+single passing test in a run where nothing worked.
+
+Corrected to assert the expected eight identifier columns exist first. The two
+constraint-catalogue tests carried the same weakness and now require a
+non-empty catalogue. A session-scoped gate also fails once with the cause and
+the fixing command, rather than letting an unmigrated database produce 28
+unrelated-looking failures.
+
+**Why this is recorded:** a test that passes when the thing it checks is absent
+is worse than no test, because it reports confidence that was never earned.
