@@ -833,3 +833,81 @@ alignment, no verdict-engine change, no frontend. M5, M6 and M3B not started.
 suite is an invented fixture, and the operational corpus is still 0 of 300–500.
 Real policies are far messier, and extraction will need adjustment once some
 exist.
+
+---
+
+## 2026-11-05 — Milestone 5: baseline practice classifier (T3.1)
+
+F-11 baseline, ALG-2. No database, no API, no improved model.
+
+### Built
+
+`analysis/models/practice_classifier.py` (F-11 baseline),
+`ml/data/opp115_dataset.py`, `ml/data/splits.py`, `ml/evaluation.py`,
+`ml/train_baseline_classifier.py`. Tests: `test_opp115_dataset.py` (19),
+`test_baseline_classifier.py` (38). Reports:
+`docs/M5_OPP115_DATASET_INSPECTION.md`,
+`docs/M5_BASELINE_CLASSIFIER_REPORT.md`.
+
+### Dataset inspection, before any training
+
+- 115 policies, **3,792 segments**, 23,194 annotation records. The unit is the
+  segment, so 3,792 examples — not 23,194.
+- **Every segment of every policy was read by all three annotators.** Verified
+  with zero uncovered segments. This is what makes an absent category a
+  defensible negative; without it the whole construction would have been
+  unsound and the milestone instruction required stopping.
+- The filename stem is **not** the CSV's policy ID: `135_instagram.com.csv`
+  carries `3850` in column D. Grouping by the wrong one would scatter a policy
+  across splits.
+- Label rule chosen by measuring all three: majority (2 of 3) leaves 1.7%
+  unlabelled; unanimous would have discarded 24%.
+
+### Measured result
+
+| Split | Macro-F1 | Micro-F1 | Hamming |
+|---|---|---|---|
+| train | 0.9367 | 0.9237 | 0.0189 |
+| validation | 0.7717 | 0.7734 | 0.0546 |
+| **test** | **0.7489** | **0.7690** | **0.0545** |
+
+80 / 17 / 18 policies, 2,634 / 617 / 541 segments, seed 20261105, **zero
+policy overlap**. Test split used once.
+
+The 0.19 train-to-test gap is overfitting and is reported as such.
+
+### The result that must not be quoted
+
+**Do Not Track: F1 0.857 on 4 test examples.** Three predictions, all correct,
+one miss. One different prediction moves the F1 between roughly 0.57 and 1.00.
+The corpus has 31 positive segments in total. **Data Retention: F1 0.429 on
+7.** Both are flagged automatically and recorded as `"reliable": false`.
+
+The macro-F1 of 0.7489 includes both, so it is flattered by two scores that
+are noise. The report says this in its opening section.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pytest tests` | **402 passed, 29 skipped** |
+| M5 tests only | 57 passed, none skipped |
+| `ruff check .` | All checks passed |
+| Model reload, offline | Identical predictions |
+| F-14 integration | 9 practices in, 9 out, 8 flagged abstained |
+| `git check-ignore` | model, metrics and processed data all ignored |
+
+### Deliberately not done
+
+No improved model, span extraction, alignment, taxonomy change, verdict
+change, schema change, migration, endpoint, worker or frontend. F-34 registry
+persistence not implemented. The validation split is unused — it exists for
+tuning that has not been done.
+
+### Limitation that matters most
+
+OPP-115 is a corpus of **website** policies from 2016; this project audits
+**Android applications** in 2026, and the operational corpus still does not
+exist. The model is also trained on OPP-115's segments and will be applied to
+F-09's, which have different boundaries. The held-out score measures neither
+of those gaps.

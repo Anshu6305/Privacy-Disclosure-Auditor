@@ -918,3 +918,80 @@ operational corpus exists.
 
 **Status:** consistent, with the provisional status recorded everywhere the
 values appear.
+
+---
+
+## Milestone 5 — 2026-11-05
+
+### C-47 Segment-level labels are supported by the corpus, and this was checked
+
+**Approved design:** FR-11 requires multi-label classification of policy
+segments over the OPP-115 category set.
+
+**The question that had to be answered first:** absence of a category can only
+mean "this segment does not discuss it" if every segment was actually read.
+
+**Measured:** all 115 policies, every segment covered by annotations, zero
+uncovered segments, zero segment identifiers outside the range of their
+policy's text, and exactly three distinct annotators on all 115. The
+construction is therefore supported by the data.
+
+Had any segment been uncovered, the milestone instruction required stopping
+and reporting the limitation. That did not arise, but the check was run rather
+than assumed.
+
+**Status:** consistent.
+
+### C-48 Majority-vote labels, with the alternatives measured
+
+All three rules were computed before choosing: any annotator leaves 0%
+unlabelled at 1.70 labels per segment; majority leaves 1.7% at 1.18;
+unanimous leaves 24.0% at 0.80. Majority was chosen because it discards
+single-annotator readings while keeping 98.3% of segments.
+
+Recorded with the numbers so the choice can be defended rather than asserted.
+
+### C-49 Split grouped by source policy
+
+**Methodological requirement.** Segments from one policy never cross a split
+boundary; a policy reuses its own phrasing, so a random split by segment would
+report memorisation as generalisation. 80 / 17 / 18 policies, seed 20261105,
+deterministic and independent of input order. The training script asserts zero
+policy overlap and refuses to train otherwise.
+
+**No example was moved between splits** to improve a rare class's support. The
+shortage is reported instead.
+
+### C-50 Rare categories reported honestly, not hidden in the aggregate
+
+Do Not Track has 4 positive test examples and Data Retention 7. Both produce
+per-class F1 scores — 0.857 and 0.429 — and **neither is a measurement.** The
+evaluation code flags any category below 10 positive test examples, prints it
+as unreliable, and records `"reliable": false` in the saved metrics.
+
+The macro-F1 of 0.7489 includes both and is therefore flattered by two scores
+that are noise. The report says so in its first section rather than leaving a
+reader to discover it.
+
+**What would be needed** is recorded: roughly 300–600 positive segments for a
+stable estimate on Do Not Track, against the 31 the corpus contains.
+
+### C-51 F-14 reused, not reimplemented
+
+**Approved design:** F-14 performs confidence thresholding and abstention.
+
+**What happened:** F-11 returns a confidence for every category and performs
+no thresholding. `analysis/confidence/gate.py` is used unchanged. A test
+asserts F-11 never sets the abstention flag, and another asserts the gate
+retains every practice rather than discarding low-confidence ones.
+
+**Status:** consistent. No second threshold mechanism exists.
+
+### C-52 No calibration claim
+
+Logistic regression outputs are returned as **rankable confidences**, not
+calibrated probabilities. No calibration has been performed or tested, and
+`class_weight="balanced"` deliberately distorts the scores. The module
+docstring, the report and the metadata all say so. The 0.50 decision threshold
+used for reporting is provisional and has not been tuned; the validation split
+exists for that and remains unused.

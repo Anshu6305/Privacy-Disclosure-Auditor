@@ -194,7 +194,7 @@ Milestone 1 except F-26 above.
 | F-08 | `analysis/text/extractor.py` | M4 | Implemented and verified |
 | F-09 | `analysis/text/segmenter.py` | M4 | Implemented and verified |
 | F-10 | `analysis/text/validator.py` | M4 | Implemented and verified |
-| F-11 | `analysis/models/practice_classifier.py` | M5, M6 | Not implemented |
+| F-11 | `analysis/models/practice_classifier.py` | M5, M6 | **Baseline implemented and evaluated**; improved variant is M6 |
 | F-12 | `analysis/models/span_extractor.py` | M6 | Not implemented |
 | F-13 | `analysis/models/variant.py` | M6 | Not implemented |
 | F-14 | `analysis/confidence/gate.py` | M7 | Implemented and verified |
@@ -320,3 +320,47 @@ defines F-09's input as F-08's cleaned text. No offset refers to raw HTML.
 
 Phase 2 and Phase 3 require the comparison and name the quantities but set no
 numbers. Reasoning in `docs/M4_TEXT_PROCESSING_REPORT.md` section 7.
+
+---
+
+## Milestone 5 — Baseline classifier (T3.1)
+
+| Requirement | Function | Code | Test | Status |
+|---|---|---|---|---|
+| FR-11 | F-11 (baseline) | `analysis/models/practice_classifier.py` | `test_baseline_classifier.py` (38) | **Baseline implemented and evaluated** |
+| ALG-2 | TF-IDF + OvR LogReg | same | same | Implemented, O(\|v\|) per segment |
+| — | Dataset construction | `ml/data/opp115_dataset.py` | `test_opp115_dataset.py` (19) | Implemented and verified |
+| — | Policy-grouped split | `ml/data/splits.py` | 8 tests | Implemented and verified |
+| — | Multi-label evaluation | `ml/evaluation.py` | 9 tests | Implemented and verified |
+| GI-02 | practice identification | F-11 | — | Baseline evidence |
+| GI-05 | baseline vs improved | F-11 baseline | — | **Half complete**; M6 supplies the improved model on the same split |
+| F-14 | reused unchanged | `analysis/confidence/gate.py` | `test_f14_flags_rather_than_discards` | No second threshold mechanism |
+
+### Measured result — held-out test split, 541 segments from 18 policies
+
+| Metric | Value |
+|---|---|
+| Macro-F1 | **0.7489** |
+| Micro-F1 | **0.7690** |
+| Hamming loss | **0.0545** |
+| Subset accuracy | 0.5896 |
+
+Training macro-F1 was 0.9367. The 0.19 gap is overfitting and is reported as
+such. **The test figure is the result; the training figure is not.**
+
+### Categories that cannot be evaluated
+
+| Category | Test support | Status |
+|---|---|---|
+| Do Not Track | 4 | **Not a measurement.** 31 positive segments exist in the whole corpus |
+| Data Retention | 7 | **Not a measurement.** F1 0.429 |
+
+Flagged automatically by `ml/evaluation.py` and recorded as `"reliable": false`
+in the saved metrics. No example was moved between splits to improve these
+counts.
+
+### Not implemented in M5
+
+F-34 model registry persistence, database writes, API endpoints, improved
+models, span extraction, semantic alignment, threshold tuning. The validation
+split exists and is deliberately unused so far.

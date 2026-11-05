@@ -29,7 +29,7 @@ Faculty Guide: _[to be filled in]_
 | M3A Acquisition layer and corpus format | R2 | **Complete** | 70 tests. Offline-first; **never run live**, no application collected |
 | M3B Acquisition persistence | R2, R5 | **Blocked** | Needs the D-1 decision before any snapshot can be written |
 | M4 Text processing | R3 | **Complete** | F-08, F-09, F-10; 78 tests. Offsets index the cleaned text and are slice-verified |
-| M5 Baseline ML | R3 | **Ready, not started** | OPP-115 in place and verified: 115 policies, 23,194 practices, 77,906 usable spans |
+| M5 Baseline ML | R3 | **Complete** | F-11 baseline, ALG-2. Held-out test macro-F1 0.7489, micro-F1 0.7690. Two categories unevaluable |
 | M6 Improved ML | R1, R3 | **Blocked** | Option A decided (D-01). Needs 300-500 labelled pairs and the gold set; neither exists |
 | M7 Verdict and evidence engine | R1 | **Core complete at unit-test level** | F-14, F-16, F-17, F-20, F-21, F-22 complete. **F-19 partial** — verdict confidence missing (audit E-5). **F-15 mechanism only** — no mapping rules authored. F-18 excluded, stays in M6 |
 | M8 Backend integration and persistence | R4 | **Not started** | Verdicts are not persisted; the engine writes nothing |

@@ -135,7 +135,7 @@ Milestones follow the approved Phase 3 WBS. Dependencies are real, not arbitrary
 | M3A Acquisition layer and corpus format | M2 | No — offline-first by design |
 | M3B Acquisition persistence | M3A, **D-1 decision** | Yes — needs the snapshot design |
 | M4 Text processing (F-08 to F-10) | M2 | No — complete, on fixtures only |
-| M5 Baseline ML (F-11 baseline) | M4 | Yes — OPP-115 |
+| M5 Baseline ML (F-11 baseline) | M4 | Complete — OPP-115 present |
 | M6 Improved ML (F-11, F-12, F-18) | M5 | Yes — models, OPP-115, PolicyIE, alignment labels |
 | M7 Verdict and evidence engine (F-15 to F-22) | M4 | No — pure logic, fully testable now |
 | M8 Backend integration (E1-E11, F-32 to F-34) | M2, M7 | No |
