@@ -1,0 +1,170 @@
+{
+  "package_name": "com.spotify.music",
+  "app_name": "Spotify: Music and Podcasts",
+  "developer_name": "Spotify AB",
+  "store_category": null,
+  "play_store_url": "https://play.google.com/store/apps/details?id=com.spotify.music",
+  "policy_url": "https://www.spotify.com/in-en/legal/privacy-policy/",
+  "_comment_declaration": "Copy this from the application's Data Safety section on its Play Store listing. OMIT the whole 'declaration' key if you did not read the section: an absent declaration and a declaration of nothing are different facts and the system keeps them apart.",
+  "declaration": {
+    "declares_no_data_collected": false,
+    "entries": [
+      {
+        "ds_category": "Location",
+        "data_type": "Approximate location",
+        "is_collected": true,
+        "is_shared": true,
+        "purpose": "App functionality; Analytics; Advertising or marketing; Fraud prevention, security, and compliance; Personalization",
+        "is_optional": false
+      },
+      {
+        "ds_category": "Device or other IDs",
+        "data_type": "Device or other IDs",
+        "is_collected": true,
+        "is_shared": true,
+        "purpose": "App functionality; Analytics; Developer communications; Advertising or marketing; Fraud prevention, security, and compliance; Personalization",
+        "is_optional": false
+      },
+      {
+      "ds_category": "Personal info",
+      "data_type": "Other info",
+      "is_collected": true,
+      "is_shared": true,
+      "purpose": "App functionality; Analytics; Advertising or marketing; Personalization; Account management",
+      "is_optional": false
+    },
+    {
+      "ds_category": "Personal info",
+      "data_type": "Email address",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Developer communications; Advertising or marketing; Fraud prevention, security, and compliance; Account management",
+      "is_optional": false
+    },
+    {
+      "ds_category": "Personal info",
+      "data_type": "User IDs",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Analytics; Developer communications; Fraud prevention, security, and compliance; Account management",
+      "is_optional": false
+    },
+    {
+      "ds_category": "Personal info",
+      "data_type": "Address",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Fraud prevention, security, and compliance; Account management",
+      "is_optional": true
+    },
+    {
+      "ds_category": "Personal info",
+      "data_type": "Phone number",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Developer communications; Fraud prevention, security, and compliance; Account management",
+      "is_optional": true
+    },
+    {
+      "ds_category": "App activity",
+      "data_type": "App interactions",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Analytics; Developer communications; Advertising or marketing; Fraud prevention, security, and compliance; Personalization",
+      "is_optional": false
+    },
+    {
+      "ds_category": "App activity",
+      "data_type": "In-app search history",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Analytics; Fraud prevention, security, and compliance; Personalization",
+      "is_optional": false
+    },
+    {
+      "ds_category": "App activity",
+      "data_type": "Installed apps",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Analytics; Fraud prevention, security, and compliance; Personalization; Account management",
+      "is_optional": false
+    },
+    {
+      "ds_category": "App activity",
+      "data_type": "Other user-generated content",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Fraud prevention, security, and compliance; Personalization",
+      "is_optional": true
+    },
+    {
+      "ds_category": "App activity",
+      "data_type": "Other actions",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Analytics; Advertising or marketing; Fraud prevention, security, and compliance; Personalization",
+      "is_optional": true
+    },
+    {
+      "ds_category": "Contacts",
+      "data_type": "Contacts",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Fraud prevention, security, and compliance; Personalization",
+      "is_optional": true
+    },
+    {
+      "ds_category": "Audio files",
+      "data_type": "Voice or sound recordings",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Fraud prevention, security, and compliance",
+      "is_optional": true
+    },
+    {
+      "ds_category": "Financial info",
+      "data_type": "Purchase history",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Analytics; Fraud prevention, security, and compliance",
+      "is_optional": true
+    },
+    {
+      "ds_category": "Photos and videos",
+      "data_type": "Photos",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Fraud prevention, security, and compliance",
+      "is_optional": true
+    },
+    {
+      "ds_category": "App info and performance",
+      "data_type": "Crash logs",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "Analytics; Fraud prevention, security, and compliance",
+      "is_optional": false
+    },
+    {
+      "ds_category": "App info and performance",
+      "data_type": "Diagnostics",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "App functionality; Analytics; Fraud prevention, security, and compliance",
+      "is_optional": false
+    },
+    {
+      "ds_category": "App info and performance",
+      "data_type": "Other app performance data",
+      "is_collected": true,
+      "is_shared": false,
+      "purpose": "Analytics; Fraud prevention, security, and compliance",
+      "is_optional": false
+    }
+    ],
+    "security": {
+      "data_encrypted_in_transit": true,
+      "user_can_request_deletion": true
+    }
+  }
+}

@@ -101,7 +101,11 @@ def build_declaration(package_name: str, raw: dict) -> DataSafetyDeclaration:
                 data_type=entry.get("data_type"),
                 is_collected=bool(entry.get("is_collected", False)),
                 is_shared=bool(entry.get("is_shared", False)),
-                purpose=entry.get("purpose"),
+                purposes=tuple(
+                part.strip()
+                for part in (entry.get("purpose") or "").split(";")
+                if part.strip()
+            ),
                 is_optional=entry.get("is_optional"),
             )
         )
@@ -112,7 +116,7 @@ def build_declaration(package_name: str, raw: dict) -> DataSafetyDeclaration:
         entries=tuple(entries),
         security=SecurityPractices(
             data_encrypted_in_transit=security_raw.get("data_encrypted_in_transit"),
-            user_can_request_deletion=security_raw.get("user_can_request_deletion"),
+            data_deletion_available=security_raw.get("user_can_request_deletion"),
         ),
         declares_no_data_collected=bool(raw.get("declares_no_data_collected", False)),
     )
@@ -171,6 +175,14 @@ def main() -> int:
     declaration = None
     if "declaration" in raw and raw["declaration"] is not None:
         declaration = build_declaration(package_name, raw["declaration"])
+        declaration_bytes = json.dumps(
+            raw["declaration"],
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+        declaration_sha = sha256_of_bytes(declaration_bytes)
         provenances.append(
             Provenance(
                 source_type=SOURCE_DATA_SAFETY,
@@ -178,6 +190,7 @@ def main() -> int:
                 retrieved_at=collected_at,
                 retrieval_mode=RETRIEVAL_MODE_MANUAL,
                 outcome=OUTCOME_SUCCESS,
+                content_sha256=declaration_sha,
             )
         )
 
