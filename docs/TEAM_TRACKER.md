@@ -41,7 +41,7 @@ can run (§2.2).
 | M5 Baseline ML | R3 | **Tested and verified** | F-11 baseline, ALG-2. Held-out test macro-F1 0.7489, micro-F1 0.7690. Two categories unevaluable |
 | M6 Improved ML | R1, R3 | **Implemented, not trained** | F-11 improved, F-12 and F-18 zero-shot implemented and logic-tested; **no model trained, no metric produced**. F-12's span dataset is real and verified: 23,150 slice-verified spans. Training needs a downloadable checkpoint — run on the Mac or Colab. F-18 fine-tuning still needs 300–500 labelled pairs, which do not exist |
 | M7 Verdict and evidence engine | R1 | **Implemented**, not verified end to end | ALG-8 precedence implemented with structural abstention propagation. F-14, F-16, F-17, F-19, F-20, F-21, F-22 complete; E-5 verdict confidence restored via `_deciding_confidence`. **F-15 mechanism only — no mapping rules authored.** F-18 excluded, stays in M6. **Never run on a real application:** every test uses controlled fixtures |
-| M8 Backend integration and persistence | R4 | **Not started** | Verdicts are not persisted; the engine writes nothing |
+| M8 Backend integration and persistence | R4 | **Implemented**, PostgreSQL verification pending | `AuditPipeline` runs one audit end to end and persists all six stages; `AuditWorker` + `claim_next_audit` give the database-backed queue with one active audit (DD-2); E1–E11 implemented. 38 new tests (625 passed, 78 skipped). **Fixture-backed workflow works; a real-model audit does not** — no M5 checkpoint in this environment, no torch/transformers for F-18, and no F-15 rules authored, which the pipeline now refuses rather than reporting manufactured findings. The 6 PostgreSQL tests skip here; run `bash scripts/verify_migrations.sh` on the Mac |
 | M9 Frontend | R6 | **Not started** | |
 | M10 Integration and deployment | all | **Not started** | |
 
@@ -73,7 +73,7 @@ can run (§2.2).
 | End-to-end audit | **Never run.** No stage upstream of F-14 exists |
 | Thresholds | All three provisional at 0.50, uncalibrated |
 
-### What M1 to M7 actually amount to
+### What M1 to M8 actually amount to
 
 Complete at **unit-test level with controlled fixtures** is not the same as
 working. Recorded plainly so the viva answer is the same as the tracker:
@@ -84,7 +84,7 @@ working. Recorded plainly so the viva answer is the same as the tracker:
 | Live retrievals performed | **0** |
 | Database rows in `privacy_auditor` | **0.** The database has never been migrated |
 | End-to-end audit run | **Never.** No stage upstream of F-14 is wired to one downstream of it |
-| Functions with no database path yet | F-02, F-04 to F-07 (M3B part 2), F-28 to F-34 (M8). F-01 and F-03 now have one |
+| Functions with no database path yet | None of F-01 to F-34. F-28 to F-34 landed with M8; F-15 has a path and an empty rule table, which the pipeline refuses to run on |
 | Learning tasks trained | 1 of 3. F-11 baseline only; F-12 and F-18 have no training data |
 | Gold set | Does not exist |
 | F-18 fine-tuning pairs | **0** of 300–500. A different unit from the gold set |

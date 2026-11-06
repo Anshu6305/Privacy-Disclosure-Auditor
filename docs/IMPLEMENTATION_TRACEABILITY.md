@@ -202,7 +202,7 @@ Milestone 1 except F-26 above.
 | F-13 | `analysis/models/variant.py` | M6 | Not implemented |
 | F-18 | `analysis/alignment/nli.py` | M6 | **Zero-shot path implemented** (D-01 Option A): premise/hypothesis construction, the three approved labels, abstention preserved. **Never run against a real NLI checkpoint. Fine-tuning not started** — the 300–500 labelled pairs do not exist |
 | F-14 | `analysis/confidence/gate.py` | M7 | Implemented and verified |
-| F-15 | `analysis/mapping/taxonomy_mapper.py` | M7 | Mechanism only — no rules authored |
+| F-15 | `analysis/mapping/taxonomy_mapper.py` | M7, M8 | Mechanism only — **no rules authored**. M8's pipeline refuses to run an audit while `rule_count == 0` |
 | F-16 | `analysis/mapping/declaration_normaliser.py` | M7 | Implemented and verified |
 | F-17 | `analysis/mapping/candidate_builder.py` | M7 | Implemented and verified |
 | F-18 | `analysis/models/semantic_aligner.py` | M6 | Blocked — no training data; decision pending (plan §7) |
@@ -210,18 +210,37 @@ Milestone 1 except F-26 above.
 | F-20 | `analysis/verdict/evidence_selector.py` | M7 | Implemented and verified |
 | F-21 | `analysis/verdict/absence_recorder.py` | M7 | Implemented and verified |
 | F-22 | `analysis/verdict/inconclusive_recorder.py` | M7 | Implemented and verified |
-| F-23 | `backend/app/services/report_assembler.py` | M8 | Not implemented |
+| F-23 | `backend/app/api/routes/audits.py` (`audit_report`), `backend/app/api/schemas/audit.py` | M8 | Implemented — assembled in the E5 route, not in a separate `report_assembler.py` (C-68) |
 | F-24 | `frontend/src/pages/ReportPage.jsx` | M9 | Not implemented |
 | F-25 | `frontend/src/components/EvidencePanel.jsx` | M9 | Not implemented |
 | F-26 | `frontend/src/components/ScopeBanner.jsx` | M1, M9 | Partially implemented |
 | F-27 | `frontend/src/components/SourceLinks.jsx` | M9 | Not implemented |
-| F-28 | `backend/app/db/repositories/audit_repo.py` | M2 | Not implemented |
-| F-29 | `backend/app/db/repositories/audit_repo.py` | M8 | Not implemented |
-| F-30 | `backend/app/services/audit_compare.py` | M8 | Not implemented |
+| F-28 | `backend/app/services/audit_service.py`, `backend/app/api/routes/audits.py` (E3) | M3B, M8 | Implemented |
+| F-29 | `backend/app/api/routes/audits.py` (`application_audits`, E7) | M8 | Implemented (C-68) |
+| F-30 | `backend/app/api/routes/audits.py` (`compare_audits`, E8) | M8 | Implemented (C-68) |
 | F-31 | `ml/evaluate_goldset.py` | M6 | Blocked — gold set does not exist yet |
-| F-32 | `backend/app/services/job_queue.py` | M8 | Not implemented |
-| F-33 | `backend/app/services/failure_handler.py` | M8 | Not implemented |
-| F-34 | `backend/app/services/version_registry.py` | M2 | Not implemented |
+| F-32 | `backend/app/services/audit_pipeline.py` (`claim_next_audit`), `backend/app/worker/worker.py` | M8 | Implemented — `FOR UPDATE SKIP LOCKED` on PostgreSQL; **the lock itself is unverified until the Mac run** (C-68) |
+| F-33 | `backend/app/services/audit_pipeline.py` (`AuditFailedError`, `AuditPipeline.run`) | M8 | Implemented — three refusals, each recorded in `audit_run.failure_reason` (C-68) |
+| F-34 | `backend/app/services/model_registry.py`, `backend/app/api/routes/audits.py` (E10) | M8 | Implemented (C-68) |
+
+## Approved endpoints E1 to E11 (M8)
+
+Every row is implemented in `backend/app/api/routes/audits.py` and covered by
+`tests/api/test_audit_endpoints.py`.
+
+| Endpoint | Route | Purpose | Status |
+| --- | --- | --- | --- |
+| E1 | `GET /api/applications?q=` | F-01 search | Implemented and verified |
+| E2 | `GET /api/applications/{package_name}` | Detail plus latest collection event; F-03 on miss | Implemented and verified |
+| E3 | `POST /api/audits` | Request an audit (F-28) | Implemented and verified |
+| E4 | `GET /api/audits/{audit_id}` | Status | Implemented and verified |
+| E5 | `GET /api/audits/{audit_id}/report` | Report assembly (F-23); 409 while incomplete | Implemented and verified |
+| E6 | `GET /api/audits/{audit_id}/evidence/{ds_category}` | Evidence, absence and inconclusive records | Implemented and verified |
+| E7 | `GET /api/applications/{package_name}/audits` | Audit history (F-29) | Implemented and verified |
+| E8 | `GET /api/audits/{a}/compare/{b}` | Two-audit comparison (F-30) | Implemented and verified |
+| E9 | `GET /api/applications/{package_name}/sources` | Both source URLs and the policy hash | Implemented and verified |
+| E10 | `GET /api/versions` | Model and mapping provenance (F-34) | Implemented and verified |
+| E11 | `GET /api/acquisition/status` | Live-retrieval configuration, never success | Implemented and verified |
 
 ## Requirements FR-01 to FR-27, NFR-01 to NFR-19, GI-01 to GI-07
 
