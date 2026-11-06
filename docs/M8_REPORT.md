@@ -1,7 +1,8 @@
 # M8 — Backend Integration
 
-**Date:** 2026-11-06 · **Owner:** R4 · **Status:** implemented; PostgreSQL
-verification pending on the Mac.
+**Date:** 2026-11-06 · **Owner:** R4 · **Status:** implemented; the queue
+claim is verified on PostgreSQL 16, the four pipeline tests are pending a
+spaCy install on the host.
 
 M8 built the component the project did not have: the thing that turns a row in
 `audit_run` into a finished report. Acquisition, text processing, the models,
@@ -109,27 +110,44 @@ declaration side only and report *Declared-not-in-policy* against every
 category the application declared — findings manufactured by a missing table.
 The pipeline refuses instead. See C-69 defect 6.
 
-## 7. What remains unverified
+## 7. PostgreSQL: what the first run settled, and what it did not
 
-Everything in `tests/integration`. PostgreSQL is unreachable from the
-development session, so these six M8 tests have never executed:
+Run 2026-11-06 against `privacy_auditor_m8_20261106_test`, PostgreSQL 16,
+Python 3.12.16: **74 passed, 4 failed** (C-71).
 
-* the CHECK constraints a complete run depends on, as PostgreSQL enforces them;
-* `threshold_config` round-tripping through a real `jsonb` column;
-* `FOR UPDATE SKIP LOCKED` — **untestable anywhere else**, because SQLite
-  ignores the clause, so the unit suite proves nothing about whether two
-  workers can claim one audit;
-* evidence offsets and non-ASCII quoted text through real `integer` and `text`
-  columns;
-* E5 assembling a report from rows PostgreSQL itself validated.
+**Verified:** `FOR UPDATE SKIP LOCKED`. Both queue tests passed — a second
+worker on its own connection could not claim an audit the first had locked
+but not committed, and an aborted claim left the audit claimable. This is
+untestable anywhere else: SQLite ignores the clause, so the unit suite proves
+nothing about it, and DD-2 rests on it. The chain also applied cleanly to a
+fresh database and all 68 pre-existing integration tests passed at head.
 
-Run on the Mac with Docker Desktop started:
+**Not a defect:** the four failures are all
+`SegmenterUnavailableError: spaCy is not installed` — exactly the four M8
+tests that run the pipeline. spaCy is pinned in `backend/requirements.txt`
+and the host virtual environment lacked it and the model. F-09 has no
+fallback splitter on purpose: another splitter moves sentence boundaries, so
+the same policy would yield different evidence offsets on different machines.
+
+**Still unverified:** the CHECK constraints under a complete run, `jsonb`
+threshold round-tripping, evidence offsets and non-ASCII quotes through real
+columns, and E5 assembling a report from PostgreSQL-validated rows. Steps 10
+to 12 of the script — downgrade, guard skips, re-upgrade, ALG-11 diagnostic —
+were not reached either, since the run stops at step 9.
+
+Install the dependency once, then re-run:
 
 ```
+cd "/Users/anshu/Documents/Major Project"
+.venv/bin/pip install -r backend/requirements.txt
+.venv/bin/python -m spacy download en_core_web_sm
 bash scripts/verify_migrations.sh
 ```
 
-It creates one new database, `privacy_auditor_m8_20261106_test`, runs the
+A new step 0c checks for spaCy and the model before touching Docker, so a
+missing dependency now fails in two seconds instead of ninety.
+
+It creates one new database, `privacy_auditor_m8_20261106b_test`, runs the
 whole chain up, the integration suite at head, down to the baseline to prove
 the guards skip, and up again. It issues no `DROP` anywhere, aborts if that
 name already exists, and never names `privacy_auditor`,

@@ -35,9 +35,10 @@ set -euo pipefail
 
 # C-53 was verified on 2026-11-05 against privacy_auditor_c53_20261105d_test.
 # M3B Part 2 was verified on 2026-11-06 against privacy_auditor_m3b_20261106b_test.
-# This run verifies the whole chain, whatever its head currently is, and now
-# also carries the M8 integration tests (pipeline, queue claim, report).
-DISPOSABLE_DB="privacy_auditor_m8_20261106_test"
+# The first M8 run (m8_20261106_test) verified FOR UPDATE SKIP LOCKED and then
+# stopped: the four pipeline tests failed because spaCy was not installed in
+# the host virtual environment. Step 0c below now catches that in two seconds.
+DISPOSABLE_DB="privacy_auditor_m8_20261106b_test"
 # Never a target. The first three are the project's own databases. The three
 # c53 databases are earlier verification runs the team asked to keep, so this
 # script must neither reuse nor disturb them:
@@ -47,12 +48,15 @@ DISPOSABLE_DB="privacy_auditor_m8_20261106_test"
 #   d_test  the run that verified C-53 end to end
 #   m3b_20261105_test  reached step 6 before the hard-coded head check failed
 #   m3b_20261106b_test the run that verified M3B Part 2 end to end
+#   m8_20261106_test   verified the queue claim; the pipeline tests failed on a
+#                      missing spaCy, which step 0c now checks for up front
 PROTECTED=("privacy_auditor" "privacy_auditor_test" "privacy_auditor_frozen_20261105_test"
            "privacy_auditor_c53_20261105_test" "privacy_auditor_c53_20261105b_test"
            "privacy_auditor_c53_20261105c_test" "privacy_auditor_c53_20261105d_test"
            "privacy_auditor_m3b_20261105_test" "privacy_auditor_m3b_20261105b_test"
            "privacy_auditor_m3b_20261105c_test" "privacy_auditor_m3b_20261105d_test"
-           "privacy_auditor_m3b_20261106_test" "privacy_auditor_m3b_20261106b_test")
+           "privacy_auditor_m3b_20261106_test" "privacy_auditor_m3b_20261106b_test"
+           "privacy_auditor_m8_20261106_test")
 # Every earlier disposable database is listed above so none can be reused. Add
 # the current one here and move DISPOSABLE_DB on before the next run.
 
@@ -115,6 +119,30 @@ PYEOF
 [[ -n "$HEAD_REV" && -n "$BASE_REV" ]] || fail "the migration graph produced no head"
 ok "chain: ${CHAIN//,/ -> }"
 ok "head: $HEAD_REV   base: $BASE_REV"
+
+# --- 0c. Text-processing dependencies -------------------------------------
+# F-09 segments with spaCy and has deliberately no fallback splitter: another
+# splitter would move sentence boundaries, so the same policy would produce
+# different segments and different evidence offsets on different machines.
+# Every M8 pipeline test therefore needs spaCy *and* the model. Without this
+# check the run spends ninety seconds and ends in four tracebacks that name
+# the real cause only at the bottom.
+step "0c. Text-processing dependencies"
+"$PY" - <<'PYEOF' || fail "install them, then re-run:
+    .venv/bin/pip install -r backend/requirements.txt
+    .venv/bin/python -m spacy download en_core_web_sm"
+import sys
+
+try:
+    import spacy
+except ImportError:
+    sys.exit("spaCy is not installed in this interpreter")
+try:
+    spacy.load("en_core_web_sm", disable=["parser", "tagger", "ner"])
+except OSError:
+    sys.exit(f"spaCy {spacy.__version__} is installed but en_core_web_sm is not")
+print(f"  ok: spaCy {spacy.__version__} with en_core_web_sm")
+PYEOF
 
 # --- 1. Compose service ---------------------------------------------------
 step "1. Identify the PostgreSQL Compose service from the configuration"

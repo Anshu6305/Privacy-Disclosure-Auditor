@@ -1732,3 +1732,53 @@ including the six new M8 tests. `FOR UPDATE SKIP LOCKED` in particular cannot
 be tested anywhere else — SQLite ignores the clause, so the unit suite proves
 nothing about it. `bash scripts/verify_migrations.sh` carries them against
 `privacy_auditor_m8_20261106_test`.
+
+### C-71 First M8 PostgreSQL run: the queue claim verified, the pipeline blocked on a missing spaCy
+
+Run of 2026-11-06 against `privacy_auditor_m8_20261106_test`, PostgreSQL 16
+(postgres:16-alpine), Python 3.12.16. **74 passed, 4 failed.**
+
+**Verified, and only verifiable here:**
+
+`FOR UPDATE SKIP LOCKED` works. Both queue tests passed —
+`test_a_second_worker_skips_an_audit_the_first_has_locked` and
+`test_the_queue_is_empty_again_after_the_claim_is_rolled_back`. A second
+worker holding its own connection could not claim an audit the first had
+locked but not yet committed, and an aborted claim left the audit claimable
+rather than stranded. SQLite ignores the clause entirely, so the 625-test unit
+suite proves nothing about this; DD-2's one-active-audit rule rests on it.
+
+The chain also applied cleanly to a fresh database — 0001_baseline →
+0002_pattern_ops → 0003_collection_event, head recorded, both
+`text_pattern_ops` functional indexes present with the right operator classes,
+collation `en_US.utf8` — and all 68 pre-existing integration tests passed at
+head.
+
+**The four failures are an environment gap, not a defect.** Every one is the
+same cause: `SegmenterUnavailableError: spaCy is not installed`. The four M8
+tests that fail are exactly the four that run the pipeline; the two that do
+not touch F-09 passed. spaCy 3.8.3 is pinned in `backend/requirements.txt`
+and `en_core_web_sm` is a separate download noted beside it; the host virtual
+environment had neither.
+
+F-09 refusing to substitute another splitter is correct and was argued when it
+was written: a different splitter moves sentence boundaries, so the same
+policy would produce different segments and different evidence offsets on
+different machines. A report's quotes would then depend on who ran the audit.
+Nothing about that should change to make a verification run go green.
+
+**What the run did not reach.** The script stops at step 9, so steps 10 to 12
+did not execute: the downgrade to baseline, the proof that the revision guards
+skip there, the re-upgrade, and the ALG-11 search diagnostic. Those remain
+unverified for this chain since the M3B run, and nothing about the schema
+changed between them.
+
+**Still unverified for M8:** the four pipeline tests — the CHECK constraints
+under a complete run, `jsonb` threshold round-tripping, evidence offsets and
+non-ASCII quotes through real columns, and E5 assembling a report from rows
+PostgreSQL validated.
+
+**Fix, in the script rather than in prose.** A new step 0c checks for spaCy
+and the model before touching Docker, and fails in two seconds naming both
+install commands. The previous run spent ninety seconds to end in four
+tracebacks whose real cause appeared only at the bottom of the fourth.
