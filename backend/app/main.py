@@ -6,7 +6,7 @@ health endpoints, which exist so the deployment and the database connection can
 be verified before any feature depends on them.
 """
 
-from app.api.routes import health
+from app.api.routes import audits, health
 from app.config import get_settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,6 +39,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(audits.router)
 
     @app.get("/api/meta/scope", tags=["meta"])
     def scope() -> dict[str, str]:

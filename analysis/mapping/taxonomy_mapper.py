@@ -61,6 +61,19 @@ class TaxonomyMapper:
                 key = (rule.opp115_category, rule.opp115_data_type)
                 self._specific.setdefault(key, []).append(rule)
 
+    @property
+    def rule_count(self) -> int:
+        """How many rules this version holds.
+
+        Read-only and additive. A caller needs it to tell "this version maps
+        nothing to that category" from "no rules have been authored at all" —
+        states that produce identical empty mappings but mean entirely
+        different things about a report built on them.
+        """
+        return sum(len(rules) for rules in self._specific.values()) + sum(
+            len(rules) for rules in self._general.values()
+        )
+
     def rules_for(
         self, opp115_category: str, data_type: str | None = None
     ) -> tuple[MappingRule, ...]:

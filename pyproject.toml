@@ -43,6 +43,19 @@ exclude = [".venv", "data", "frontend", "backend/migrations/versions"]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
 ignore = ["E501"]
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI declares dependencies as default arguments. B008 exists to catch an
+# accidental shared mutable default; these are the framework's documented
+# idiom and are re-evaluated per request, so they are declared immutable here
+# rather than silenced with per-line noqa across every endpoint.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+]
+
 [tool.mypy]
 python_version = "3.12"
 warn_unused_ignores = true

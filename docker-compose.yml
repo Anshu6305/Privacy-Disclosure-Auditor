@@ -78,7 +78,11 @@ services:
     # breaks the memory assumption; audits queue instead.
     deploy:
       replicas: 1
-    restart: unless-stopped
+    # on-failure, not unless-stopped: the worker exits 2 when the models or the
+    # database are unavailable, and that is a configuration fact, not a
+    # transient fault. Restarting forever would bury it in a log loop; stopping
+    # after three attempts leaves the reason visible in `docker compose ps`.
+    restart: on-failure:3
 
 volumes:
   database_data:
