@@ -1993,3 +1993,113 @@ named 'ml.data.opp115_spans'` — so it is not passing vacuously.
 The approved split, seed and methodology are untouched: the freshly extracted
 bundle reports the same 2,466 segments, 55 labels and 80/17/18 policy split
 as a local run.
+
+### C-79 F-12 trained and verified; the exact-match score is the headline
+
+The checkpoint trained on Colab (Tesla T4, 4 epochs, `distilbert-base-uncased`)
+was integrated and **independently re-evaluated here**, because the training
+run's metrics file was not brought back with the weights. Rather than
+transcribe figures from a notebook console, `ml/evaluate_span_extractor.py`
+re-derives them from the checkpoint and the same held-out split, reusing the
+trainer's own `score_segments` so the definition of a correct span cannot
+differ between the two runs.
+
+| Test split, 352 segments | |
+| --- | --- |
+| Gold spans | 1,010 |
+| Predicted spans | 1,415 |
+| **Exact** precision / recall / F1 | **0.0919 / 0.1287 / 0.1072** |
+| Overlapping precision / recall / F1 | 0.4848 / 0.6792 / 0.5658 |
+| Spans that did not slice back out | **0** |
+
+The re-derived figures match the reported Colab run to four decimal places,
+which is the evidence that the integrated checkpoint is the one that was
+trained.
+
+**What these numbers mean, stated plainly.** Exact F1 0.107 means the model
+gets the span boundaries right about one time in ten. Overlap F1 0.566 means
+it usually finds roughly the right region and the right value. The gap
+between them *is* the boundary error, and it is large. Observed directly:
+asked about "We collect your precise location", the model returns
+`Location` over the text "your precise location to" — the right value, one
+word too far.
+
+**This model is not accurate and must not be described as production-ready.**
+No threshold was lowered to make it produce more verdicts. The abstention
+gate does its job: of six spans in a short real example, four fell below 0.50
+and were flagged. Those stay uncertain and cannot become confident absence
+findings, which is the behaviour that matters more here than the F1.
+
+The 0 unverifiable spans is the one unambiguously good figure: every span the
+model produced sliced back out of its segment exactly, so no quote it
+generates can be text the policy does not contain.
+
+### C-80 F-18's label order is now read from the model, and tested without one
+
+`TransformersNliBackend` already read `id2label` rather than assuming an
+order. M11 extracted that into `resolve_nli_label_indices()` so the logic can
+be tested against real head configurations without downloading a model, and
+added six tests over the three orders published NLI models actually use.
+
+The failure guarded against is silent and total: `cross-encoder` puts
+entailment at index 1, `roberta-large-mnli` at index 2. A fixed order would
+invert SUPPORTS and CONTRADICTS for one of them, reporting the opposite of
+what every policy says while every other test still passed.
+
+`TransformersNliBackend` now also prefers a local checkpoint at
+`ml/checkpoints/nli-mnli-v1` over the hub identifier, mirroring F-12. The
+project is offline-first and an audit should not depend on a network call at
+the moment it runs.
+
+**F-18 still cannot perform inference here.** `huggingface.co` returns 403 at
+this environment's proxy, confirmed by attempting the download, not assumed.
+The code path is complete and the safe refusal is intact: `load_aligner`
+raises `ModelsUnavailableError` and `AuditPipeline` cannot be constructed
+without an aligner.
+
+### C-81 Automated Play Store collection is blocked; the manual path is now written
+
+`play.google.com` is not on this environment's allowlist — confirmed by
+attempting a fetch. Mass scraping was forbidden by the approved design in any
+case, so the gap was always going to be filled manually for the pilot.
+
+`scripts/manual_collect.py` writes the same corpus record an automated
+collector would, with the same provenance fields, so nothing downstream can
+tell the difference or needs to. Its refusals are the point:
+
+* omit the `declaration` key and the record stores **no declaration**, not a
+  declaration of nothing;
+* `declares_no_data_collected` stays null when unset — *not read* is a third
+  state and the schema has always kept it apart from False;
+* a Data Safety category outside the approved fourteen is refused outright
+  rather than coerced to a near equivalent;
+* the policy file is stored byte for byte and hashed as-is, so every later
+  quotation is a slice of what was actually collected. Nothing is fetched,
+  reconstructed or summarised.
+
+`data/corpus/apps/` is still empty. The tooling is ready and the collection
+itself needs a person with a browser.
+
+### C-82 A real-model pipeline run, and why it is a demonstration and not an audit
+
+`scripts/demo_real_models.py` runs F-08 → F-22 over a genuine published
+privacy policy from OPP-115 with the **rebuilt M5 classifier and the trained
+F-12 checkpoint**, the 30 authored F-15 rules, and a fixture aligner.
+
+Result on `1017_sci-news.com.html`: 20 segments, 199 practices, 32
+judgements, 14 verdicts, 9 evidence records, **every quote an exact slice of
+the stored document**. Four categories carry `abstention_involved`, which is
+the F-12 uncertainty propagating as designed.
+
+**It is not an audit, and the script says so in its output.** An audit
+compares two disclosures. No Data Safety declaration exists for any
+application, so the declaration side is empty *by fact*, not by finding. Every
+In-policy-not-declared here means "the policy says this and nothing was
+collected to compare it against" — not that a developer failed to declare
+something. `uses_fixture_models` is true because F-18 was stubbed, and the
+report declares it.
+
+One input artefact worth recording: OPP-115's `sanitized_policies` files use
+`|||` as a segment separator, and it appears inside the quoted evidence. That
+is a property of this stand-in input, not of the pipeline; a real audit reads
+a saved HTML page, which carries no such marker.

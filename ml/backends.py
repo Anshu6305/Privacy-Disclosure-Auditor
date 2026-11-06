@@ -25,10 +25,49 @@ from analysis.models.span_extractor import TaggedToken
 #: A). Small enough for CPU inference on the 8 GB machine.
 DEFAULT_NLI_MODEL = "cross-encoder/nli-distilroberta-base"
 
+#: Where a checkpoint downloaded elsewhere is expected, mirroring F-12's
+#: `ml/checkpoints/span-extractor-v1`. Preferred over the hub identifier when
+#: it exists: the project is offline-first, and an audit should not depend on
+#: a network call at the moment it runs.
+LOCAL_NLI_CHECKPOINT = Path("ml/checkpoints/nli-mnli-v1")
+
 #: The order a model's NLI head emits. Checked against the loaded model's
 #: `id2label` rather than assumed, because a mismatch would silently swap
 #: entailment and contradiction — turning SUPPORTS into CONTRADICTS.
 EXPECTED_NLI_LABELS = {"entailment", "neutral", "contradiction"}
+
+
+def resolve_nli_label_indices(id2label: dict) -> dict[str, int]:
+    """Map each NLI class name to the output index that carries it.
+
+    Read from the model's own configuration, never assumed. Heads differ:
+    some emit contradiction first, some entailment first, and the names vary
+    in case and in prefixes such as ``LABEL_``. Getting this wrong would swap
+    SUPPORTS and CONTRADICTS on every pair while the system looked entirely
+    healthy — a silent inversion of every verdict the aligner produces.
+
+    Separated from the backend so it can be tested against real `id2label`
+    dictionaries without downloading a model.
+    """
+    index_for: dict[str, int] = {}
+    for index, label in id2label.items():
+        name = str(label).strip().lower()
+        if name in EXPECTED_NLI_LABELS:
+            index_for[name] = int(index)
+
+    missing = EXPECTED_NLI_LABELS - set(index_for)
+    if missing:
+        raise ValueError(
+            f"the model does not expose the NLI labels {sorted(missing)}; its "
+            f"head is {id2label}. F-18 needs entailment, neutral and "
+            "contradiction, and will not guess which index is which."
+        )
+    if len(set(index_for.values())) != 3:
+        raise ValueError(
+            f"two NLI labels share an output index in {id2label}; the head "
+            "cannot be interpreted."
+        )
+    return index_for
 
 
 def _require_transformers():
@@ -48,31 +87,30 @@ def _require_transformers():
 class TransformersNliBackend:
     """F-18's zero-shot NLI scorer."""
 
-    def __init__(self, model_identifier: str = DEFAULT_NLI_MODEL, batch_size: int = 8):
+    def __init__(self, model_identifier: str | Path | None = None, batch_size: int = 8):
         torch, transformers = _require_transformers()
         self._torch = torch
-        self._tokenizer = transformers.AutoTokenizer.from_pretrained(model_identifier)
+
+        # A local checkpoint wins when present. The hub identifier remains
+        # the fallback so a machine with network access still works, but an
+        # audit on an offline machine must not fail for want of a download.
+        if model_identifier is None:
+            model_identifier = (
+                LOCAL_NLI_CHECKPOINT
+                if LOCAL_NLI_CHECKPOINT.is_dir()
+                else DEFAULT_NLI_MODEL
+            )
+        source = str(model_identifier)
+
+        self._tokenizer = transformers.AutoTokenizer.from_pretrained(source)
         self._model = transformers.AutoModelForSequenceClassification.from_pretrained(
-            model_identifier
+            source
         )
         self._model.eval()
         self.batch_size = batch_size
-        self.model_identifier = model_identifier
+        self.model_identifier = source
 
-        # The label order is read from the model, never assumed. Swapping
-        # entailment and contradiction would invert every verdict while
-        # looking entirely healthy.
-        self._index_for = {
-            label.lower(): index
-            for index, label in self._model.config.id2label.items()
-        }
-        missing = EXPECTED_NLI_LABELS - set(self._index_for)
-        if missing:
-            raise ValueError(
-                f"{model_identifier} does not expose the NLI labels "
-                f"{sorted(missing)}; its head is {self._model.config.id2label}. "
-                "F-18 needs entailment, neutral and contradiction."
-            )
+        self._index_for = resolve_nli_label_indices(self._model.config.id2label)
 
     def predict(self, pairs: Sequence[tuple[str, str]]) -> list[NliPrediction]:
         if not pairs:

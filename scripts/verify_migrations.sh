@@ -38,7 +38,7 @@ set -euo pipefail
 # The first M8 run (m8_20261106_test) verified FOR UPDATE SKIP LOCKED and then
 # stopped: the four pipeline tests failed because spaCy was not installed in
 # the host virtual environment. Step 0c below now catches that in two seconds.
-DISPOSABLE_DB="privacy_auditor_m10_20261106_test"
+DISPOSABLE_DB="privacy_auditor_m11_20261106_test"
 # Never a target. The first three are the project's own databases. The three
 # c53 databases are earlier verification runs the team asked to keep, so this
 # script must neither reuse nor disturb them:
@@ -57,7 +57,8 @@ PROTECTED=("privacy_auditor" "privacy_auditor_test" "privacy_auditor_frozen_2026
            "privacy_auditor_m3b_20261105_test" "privacy_auditor_m3b_20261105b_test"
            "privacy_auditor_m3b_20261105c_test" "privacy_auditor_m3b_20261105d_test"
            "privacy_auditor_m3b_20261106_test" "privacy_auditor_m3b_20261106b_test"
-           "privacy_auditor_m8_20261106_test" "privacy_auditor_m8_20261106b_test")
+           "privacy_auditor_m8_20261106_test" "privacy_auditor_m8_20261106b_test"
+           "privacy_auditor_m10_20261106_test")
 # Every earlier disposable database is listed above so none can be reused. Add
 # the current one here and move DISPOSABLE_DB on before the next run.
 

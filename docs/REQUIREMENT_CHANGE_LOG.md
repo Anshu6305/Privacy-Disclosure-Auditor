@@ -159,3 +159,43 @@ change is one migration and the vocabulary above gains a value.
 transit, deletion availability, independent security review. M3A parses it and
 the filesystem corpus record retains it. No approved column holds it, it is not
 required by FR-01 to FR-07, and it takes no part in verdict calculation.
+
+---
+
+## M11 — `ExtractedSpan.value`, an additive field (2026-11-06)
+
+**What changed.** `analysis.models.span_extractor.ExtractedSpan` gained an
+optional `value` field, and `decode_bio` learned to read a compound BIO tag
+such as `B-data_type:Contact`.
+
+**Why.** F-15's rules are keyed on the OPP-115 data-type *value*, not on the
+span type. A span of type `data_type` says the sentence names some data;
+only the value says which. An F-12 tagger that learned boundaries alone
+would emit spans no F-15 rule could ever match, and the two approved
+functions would not connect.
+
+**Why this is not a requirement change.** No approved requirement, function
+identifier, endpoint, database column or verdict rule is altered. F-12 is
+still "extract data-type and purpose spans with verifiable offsets" and
+F-15 is still deterministic rule lookup. The field is additive with a default
+of `None`, a plain `B-data_type` tag still decodes, and no existing test
+changed. The `extracted_span` table is untouched.
+
+**Scope.** `ExtractedSpan`, `decode_bio`, and the F-12 training label scheme.
+
+---
+
+## M11 — F-18 prefers a local checkpoint (2026-11-06)
+
+**What changed.** `TransformersNliBackend` now loads from
+`ml/checkpoints/nli-mnli-v1` when that directory exists, falling back to the
+Hugging Face identifier otherwise.
+
+**Why.** The approved design is offline-first. An audit should not depend on
+a network call at the moment it runs, and this environment cannot reach the
+hub at all. It mirrors how F-12 and the M5 baseline already load.
+
+**Why this is not a requirement change.** Decision D-01 Option A — an
+NLI-pretrained encoder used zero-shot — is unchanged. Only where the weights
+are read from changed. No interface, label mapping, threshold or abstention
+rule was altered.
