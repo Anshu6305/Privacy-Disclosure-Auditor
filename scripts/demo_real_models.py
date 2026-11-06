@@ -55,9 +55,9 @@ from app.db.models import (  # noqa: E402
 from app.services.audit_pipeline import AuditPipeline  # noqa: E402
 from app.services.model_registry import (  # noqa: E402
     ModelsUnavailableError,
+    load_aligner,
     load_baseline_classifier,
     load_span_extractor,
-    register_fixture_models,
 )
 from sqlalchemy import create_engine, select  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
@@ -133,7 +133,19 @@ def main() -> int:
     mapping = load_mapping_file()
     print(f"F-15          : real, {len(mapping.rules)} authored rules "
           f"({mapping.version_label})")
-    print("F-18          : FIXTURE — no NLI checkpoint is downloadable here")
+
+    # F-18 is used when its checkpoint is present and the stub is used when it
+    # is not. Which one ran is recorded on the audit, so a report produced
+    # either way declares what produced it.
+    try:
+        aligner = load_aligner(0.50)
+        backend = getattr(aligner, "_backend", None)
+        print(f"F-18          : real, {getattr(backend, 'model_identifier', '?')}")
+        f18_is_real = True
+    except ModelsUnavailableError as exc:
+        print(f"F-18          : FIXTURE — {str(exc)[:70]}")
+        aligner = StubAligner()
+        f18_is_real = False
 
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
@@ -166,7 +178,53 @@ def main() -> int:
         )
         session.add(version)
         session.flush()
-        models = register_fixture_models(session, "demo-f18-fixture")
+        # Each model_version row names what actually ran. Registering these as
+        # fixtures would have set `uses_fixture_models` on a run whose models
+        # are all trained weights, which understates the report in the same
+        # way overstating it would be wrong: the flag has to track reality in
+        # both directions or it means nothing.
+        from app.db.models import ModelVersion
+
+        from analysis.vocabulary import (
+            TASK_ALIGNMENT,
+            TASK_CLASSIFICATION,
+            TASK_SPAN_EXTRACTION,
+            VARIANT_BASELINE,
+        )
+
+        registrations = {
+            TASK_CLASSIFICATION: (
+                "ml/checkpoints/classifier-baseline-v1",
+                "M5 baseline, macro-F1 0.7489 on the held-out test split.",
+            ),
+            TASK_SPAN_EXTRACTION: (
+                "ml/checkpoints/span-extractor-v1",
+                "F-12, exact-match F1 0.1072. Low accuracy; boundaries are "
+                "unreliable and the abstention gate carries the uncertainty.",
+            ),
+            TASK_ALIGNMENT: (
+                str(getattr(aligner, "_backend", None)
+                    and aligner._backend.model_identifier)
+                if f18_is_real
+                else "fixture:alignment",
+                "Zero-shot NLI, not fine-tuned."
+                if f18_is_real
+                else "Controlled stub. Not a trained model.",
+            ),
+        }
+        models: dict[str, int] = {}
+        for task, (identifier, notes) in registrations.items():
+            row = ModelVersion(
+                task=task,
+                variant=VARIANT_BASELINE,
+                model_identifier=identifier,
+                version_label="m11-demo",
+                is_active=True,
+                notes=notes,
+            )
+            session.add(row)
+            session.flush()
+            models[task] = row.model_version_id
 
         audit = AuditRun(
             app_id=application.app_id,
@@ -184,7 +242,7 @@ def main() -> int:
         outcome = AuditPipeline(
             session,
             classifier=classifier,
-            aligner=StubAligner(),
+            aligner=aligner,
             mapper=mapping.mapper(),
             repository_root=ROOT,
             span_extractor=span_extractor,
@@ -238,8 +296,13 @@ def main() -> int:
     print(
         "\nThis was a PIPELINE DEMONSTRATION on real policy text, not an audit:\n"
         "no Data Safety declaration was collected, so the declaration side is\n"
-        "empty by fact and not by finding. F-18 was a fixture."
+        "empty by fact and not by finding."
     )
+    if f18_is_real:
+        print(
+            "Every model in this run was real: F-11, F-12 and F-18 all loaded\n"
+            "trained weights. Only the declaration is missing."
+        )
     return 0
 
 

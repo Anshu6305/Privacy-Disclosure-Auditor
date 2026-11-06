@@ -1,7 +1,7 @@
 # Phase 4 — Completion and Traceability Report
 
-**Date:** 2026-11-06 · **Verdict: Phase 4 is NOT closed.** §8 gives the two
-reasons and what each needs.
+**Date:** 2026-11-06 · **Verdict: Phase 4 is NOT closed**, and is one step from it. §8 gives the
+single remaining reason.
 
 This maps every approved identifier to real code and real tests. Statuses are
 used strictly:
@@ -50,7 +50,7 @@ Where the only evidence is a fixture, the row says so.
 | F-14 confidence gate | `analysis/confidence/gate.py` | Implemented and verified |
 | F-15 taxonomy mapping | `analysis/mapping/taxonomy_mapper.py`, `rule_loader.py`, `taxonomy/mapping_v1.json` | Implemented and verified — 30 rules, 11 documented refusals |
 | F-16, F-17 normalise and candidates | `analysis/mapping/` | Implemented and verified |
-| F-18 semantic alignment | `analysis/alignment/nli.py`, `ml/backends.py` | **Blocked by an external dependency** — never run |
+| F-18 semantic alignment | `analysis/alignment/nli.py`, `ml/backends.py` | **Implemented and verified** — real inference over all three outcomes. **Not fine-tuned**; weak on plain entailment |
 | F-19 ALG-8 verdicts | `analysis/verdict/verdict_engine.py` | Implemented and verified |
 | F-20, F-21, F-22 evidence records | `analysis/verdict/` | Implemented and verified |
 | F-23 report assembly | `backend/app/api/routes/audits.py` | Implemented and verified |
@@ -92,7 +92,7 @@ verified.** No migration was modified after freezing.
 | F-11 baseline (M5) | Real, reproducible | Macro-F1 0.7489, Micro-F1 0.7690 | Yes |
 | F-11 improved (M6) | **Never trained** | None | No |
 | F-12 span extractor | Real, Colab T4, 4 epochs | Exact F1 0.1072, overlap F1 0.5658 | Yes |
-| F-18 aligner | Zero-shot, no fine-tuning | **None** | **No — 403 at the proxy** |
+| F-18 aligner | Zero-shot, no fine-tuning | Not evaluated on a gold set (none exists) | **Yes** — all three outcomes, 7 tests |
 
 **Honest reading of F-12.** Exact F1 0.107 is poor. The model finds roughly
 the right region with the right value about half the time (overlap F1 0.566)
@@ -125,23 +125,23 @@ requirement-level summary:
 
 ## 8. Why Phase 4 is not closed
 
-**1. F-18 has never performed inference.** `huggingface.co` returns 403 at
-this environment's proxy, confirmed by attempting the download. The zero-shot
-path, the label resolution and the abstention behaviour are complete and
-tested; no checkpoint has been loaded. Until it has, the semantic alignment
-step of the approved design is unproven in practice.
+**One thing, and it is not a code defect: no real Android application has
+been audited.** `data/corpus/apps/` is empty. Every result in this project
+comes from OPP-115 research text or controlled fixtures, and in every case
+the Data Safety declaration side is absent — so the system has never done the
+one thing it exists to do, which is compare two real disclosures.
 
-**2. No real Android application has been audited.** `data/corpus/apps/` is
-empty. Every result in this project comes from OPP-115 research text or
-controlled fixtures. The manual collection tool is written and refuses to
-invent data; the collection itself needs a person with a browser.
+Everything that could be verified has been. F-11, F-12 and F-18 all load
+trained weights and perform real inference. F-15's rules are authored and
+tested. The pipeline runs end to end on a real published privacy policy and
+produces verdicts with verbatim evidence, every quote an exact slice.
+PostgreSQL is verified across the full migration chain. The frontend is
+tested.
 
-Both are resolvable with the commands in `docs/M11_REPORT.md` §9. Neither is
-a code defect, and neither can be closed by a test suite.
-
-**What it would mean to close Phase 4 now.** The system has never compared
-two real disclosures, which is the thing it exists to do. A green suite of
-690 tests would be evidence about fixtures.
+**What closing Phase 4 now would mean.** A green suite of 697 tests would be
+evidence about research text and fixtures. The remaining step needs three to
+five applications collected through `scripts/manual_collect.py`, which
+refuses to invent any part of them. No test can substitute for it.
 
 ## 9. Known limitations
 
@@ -149,8 +149,11 @@ two real disclosures, which is the thing it exists to do. A green suite of
   presented otherwise.
 * **F-11's improved variant was never trained**, so F-13 has nothing to
   select between and M6's comparison was never made.
-* **F-18 fine-tuning data does not exist** — the 300–500 labelled pairs were
-  never annotated, and neither was the ~100-application gold set F-31 needs.
+* **F-18 is zero-shot and weak on plain entailment.** It scores a matching
+  statement as neutral (0.637) rather than entailment (0.354); it is reliable
+  on contradictions (0.977) and on irrelevance. The 300–500 labelled pairs
+  D-01 planned for fine-tuning were never annotated, and neither was the
+  ~100-application gold set F-31 needs.
 * **F-10's analysability thresholds are provisional**, chosen by this project
   and not an approved requirement.
 * **Rare classes are not measurable.** Data Retention (n=7) and Do Not Track

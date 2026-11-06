@@ -1,8 +1,9 @@
 # M11 — Model Integration, End-to-End Verification and Phase Closure
 
-**Date:** 2026-11-06 · **Status:** implementation complete; **Phase 4 not yet
-ready for closure.** One blocker is external and one is data collection.
-Both are named precisely in §7.
+**Date:** 2026-11-06 · **Status:** implementation complete and verified; **Phase 4 not yet ready
+for closure.** One blocker remains: no real application has been audited.
+F-18 and PostgreSQL were both resolved after the first draft of this report
+and the sections below record the actual results.
 
 Four statuses are kept apart throughout: **implemented**, **tested**,
 **PostgreSQL-verified**, and **demonstrated on real data**.
@@ -71,7 +72,7 @@ two partial rules rather than resolved into one confident match.
 
 An empty or unfirable rule table causes the pipeline to refuse (C-69, C-76).
 
-## 4. F-18 — implemented, blocked by an external dependency
+## 4. F-18 — implemented and verified
 
 The zero-shot path is complete. M11 extracted `resolve_nli_label_indices()`
 so the head's label order is read from the model's own `id2label` and can be
@@ -83,11 +84,31 @@ CONTRADICTS for one of them while every other test still passed.
 `TransformersNliBackend` now prefers a local `ml/checkpoints/nli-mnli-v1`
 over the hub identifier, mirroring F-12.
 
-**No inference has been run.** `huggingface.co` returns 403 at this
-environment's proxy — confirmed by attempting the download, not assumed. The
-safe refusal is intact: `load_aligner` raises `ModelsUnavailableError` and
-`AuditPipeline` cannot be constructed without an aligner. Nothing was
-substituted and no architecture was changed to work around it.
+**Real inference verified.** The checkpoint was downloaded on the networked
+machine into `ml/checkpoints/nli-mnli-v1` and loads through the registry.
+Seven tests cover all three outcomes.
+
+**The label order was not the common one.** This checkpoint reports
+`{contradiction: 0, entailment: 1, neutral: 2}` — entailment at index 1,
+where most MNLI heads put neutral. Code assuming the usual order would have
+read entailment probabilities out of the neutral slot on every pair while
+every other test still passed. The config-driven resolution is why that did
+not happen.
+
+| Premise | Hypothesis | Result |
+| --- | --- | --- |
+| "We do not collect any location information from users." | collects location | **contradiction 0.977** |
+| "We use cookies to remember your display preferences." | collects financial info | neutral 0.846 |
+| "We collect your precise location to show nearby results." | collects location | neutral 0.637, entailment 0.354 |
+
+The first justifies semantic alignment over keyword matching: that sentence
+contains every keyword "we collect location" does.
+
+**The third is a real weakness.** Zero-shot, the model does not strongly
+entail a plain matching statement. That is what D-01 expected fine-tuning on
+300 to 500 pairs to fix, and those pairs do not exist. The test for this case
+asserts only that the model leans away from contradiction, because asserting
+entailment would assert something the model does not do.
 
 ## 5. Corpus — tooling complete, collection outstanding
 
@@ -103,16 +124,27 @@ file is stored byte for byte and hashed as-is.
 **`data/corpus/apps/` is still empty. No real Android application has been
 audited.**
 
-## 6. Real-model pipeline run
+## 6. Real-model pipeline run — all three models real
 
 `scripts/demo_real_models.py` runs F-08 → F-22 over a genuine published
-privacy policy from OPP-115 with the **real rebuilt M5 classifier**, the
-**real trained F-12 checkpoint**, the **30 authored F-15 rules**, and a
-fixture aligner.
+privacy policy from OPP-115 with **F-11, F-12 and F-18 all loading trained
+weights** and the 30 authored F-15 rules.
 
 Result on `1017_sci-news.com.html`: 20 segments, 199 practices, 32
-judgements, 14 verdicts, 9 evidence records, and **every quote an exact slice
-of the stored document**. Four categories carry `abstention_involved`.
+judgements, 14 verdicts, 6 evidence records, **every quote an exact slice of
+the stored document**, and `uses_fixture_models` **False**.
+
+Real alignment changed the verdicts, which is the evidence it does work
+rather than pass through: Personal info became **Contradictory**, driven by
+"Sci-News.com does not sell, trade or rent your personal information to third
+parties", and App activity became **Undetermined** through abstention. Under
+the stub both had been In-policy-not-declared.
+
+One defect found by reading that output: the first real-model run still
+printed `fixture models used: True`, because the script registered its
+`model_version` rows with a test helper. Understating a real run is the same
+class of error as overstating a stubbed one, so it now registers the
+checkpoint that actually ran (C-84).
 
 **It is a demonstration, not an audit, and the script says so.** An audit
 compares two disclosures; no Data Safety declaration exists, so the
@@ -130,24 +162,25 @@ page.
 
 | Suite | Result |
 | --- | --- |
-| Backend `pytest tests` | **690 passed, 78 skipped, 0 failed** |
+| Backend `pytest tests` | **697 passed, 78 skipped, 0 failed** |
 | Skip reason | **all 78 are PostgreSQL** (`TEST_DATABASE_URL` unset). No ML test skipped here |
 | `ruff check .` | clean |
 | Frontend Vitest | **32 passed** |
 | `npm run lint` / `vite build` | clean / succeeds |
-| PostgreSQL integration | **not re-run — see below** |
+| PostgreSQL integration | **78 passed, 0 skips at head**; downgrade guards fired (37 passed, 41 skipped); re-upgrade restored the schema |
 
 Tests using **real models and real weights**: `test_f12_real_inference.py`
-(7) and the demonstration script. Tests using **fixtures or mocks**:
+(7), `test_f18_real_inference.py` (7) and the demonstration script. Tests using **fixtures or mocks**:
 everything else, including all 32 frontend tests.
 
 **Environment caveat.** torch 2.5.1 and transformers 4.46.3 were installed in
 the development environment during M11, so the `ml`-marked tests run here. On
 a machine without them those tests **skip**, and a skip is not a pass.
 
-**PostgreSQL was not re-run.** It is unreachable from the development
-session; the command is in §9. No schema or migration changed in M11, but
-`ml/backends.py`, `model_registry.py` and the span extractor did.
+**PostgreSQL was re-verified** on 2026-11-06 against
+`privacy_auditor_m11_20261106_test`: full chain, 78 integration tests with
+zero skips at head, downgrade guards firing, re-upgrade restoring the schema.
+The three protected databases were untouched (C-83).
 
 ## 8. Files changed
 
@@ -165,42 +198,41 @@ session; the command is in §9. No schema or migration changed in M11, but
 No schema, migration, API contract, requirement identifier or frontend screen
 changed.
 
-## 9. What you need to run
+## 9. What remains to be run
+
+PostgreSQL and the F-18 checkpoint are both done. The one outstanding task
+needs a browser, not a command:
 
 ```
 cd "/Users/anshu/Documents/Major Project"
-
-# 1. PostgreSQL re-verification
-bash scripts/verify_migrations.sh
-
-# 2. F-18 checkpoint, on any machine with network access
-.venv/bin/pip install -r backend/requirements-ml.txt
-.venv/bin/python -c "
-from huggingface_hub import snapshot_download
-snapshot_download('cross-encoder/nli-distilroberta-base',
-                  local_dir='ml/checkpoints/nli-mnli-v1')
-"
+.venv/bin/python scripts/manual_collect.py --template > myapp.json
+# fill it in from a real Play Store listing, save that app's privacy policy
+# page from the browser, then:
+.venv/bin/python scripts/manual_collect.py --input myapp.json \
+    --policy-file ~/Downloads/policy.html
+.venv/bin/python scripts/import_corpus.py --dry-run
 ```
 
-Fresh disposable database `privacy_auditor_m11_20261106_test`.
+Three to five applications is enough for a pilot.
 
 ## 10. Conclusion
 
-**Phase 4 is not yet ready for closure.** Every implementation and
-integration task that could be completed has been, and the pipeline now runs
-end to end on real policy text with two of three models real. Two things
-genuinely remain:
+**Phase 4 is not yet ready for closure**, and it is now one step away.
 
-1. **F-18 has never performed inference.** The code is complete; the
-   checkpoint cannot be downloaded from this environment. One command on a
-   networked machine resolves it.
-2. **No real application has been audited.** `data/corpus/apps/` is empty.
-   The manual collection tool is written and the collection itself needs a
-   person with a browser.
+Every component works with real weights. F-11, F-12 and F-18 all load trained
+models, F-15's rules are authored and tested, the pipeline runs end to end on
+real policy text producing verdicts and verbatim evidence, PostgreSQL is
+verified, and the frontend is tested.
 
-Until both are done, the system has never compared two real disclosures,
-which is the thing the project exists to do. Closing Phase 4 on a green test
-suite would be closing it on fixtures.
+**One thing remains: no real Android application has been audited.**
+`data/corpus/apps/` is empty, so the system has never compared two real
+disclosures — the thing the project exists to do. Every result so far comes
+from OPP-115 research text with the declaration side absent.
+
+This is not a code defect and no test can close it. It needs three to five
+applications collected through `scripts/manual_collect.py`, which refuses to
+invent any part of them. Closing Phase 4 before that would be closing it on
+research text and fixtures.
 
 Phase 5 is the separate academic validation and testing phase and is not
 started.

@@ -2103,3 +2103,70 @@ One input artefact worth recording: OPP-115's `sanitized_policies` files use
 `|||` as a segment separator, and it appears inside the quoted evidence. That
 is a property of this stand-in input, not of the pipeline; a real audit reads
 a saved HTML page, which carries no such marker.
+
+### C-83 PostgreSQL re-verified for M11, and F-18 performs real inference
+
+**PostgreSQL, 2026-11-06, `privacy_auditor_m11_20261106_test`.** Every check
+passed: chain applied to a fresh database, both `text_pattern_ops` indexes
+with the right operator classes, **78 integration tests passed with zero
+skips at head**, downgrade to baseline fired the revision guards as designed
+(37 passed, 41 skipped), and the re-upgrade restored both the head revision
+and the schema it describes. The three protected databases were untouched.
+
+**F-18 now performs real inference.** `cross-encoder/nli-distilroberta-base`
+was downloaded on the networked machine into `ml/checkpoints/nli-mnli-v1`
+and loads through the registry.
+
+**The label order was not the common one, and the config-driven resolution
+is why that did not matter.** This checkpoint reports
+`{contradiction: 0, entailment: 1, neutral: 2}` — entailment at index 1,
+where most MNLI heads put neutral. Code that had assumed the usual order
+would have read entailment probabilities out of the neutral slot on every
+pair, reporting confident agreement as uncertainty and vice versa, while
+every other test still passed. C-80's six tests anticipated exactly this;
+this checkpoint is the case they were written for.
+
+Observed behaviour on three hand-checked pairs:
+
+| Premise | Hypothesis | Result |
+| --- | --- | --- |
+| "We do not collect any location information from users." | collects location | **contradiction 0.977** |
+| "We use cookies to remember your display preferences." | collects financial info | neutral 0.846 |
+| "We collect your precise location to show nearby results." | collects location | neutral 0.637, entailment 0.354 |
+
+The first is the case that justifies semantic alignment at all: that sentence
+contains every keyword "we collect location" does, and only an entailment
+model can tell a denial from an assertion.
+
+**The third is a real weakness and is recorded as one.** Zero-shot, this
+model does not strongly entail a plain matching statement; it calls it
+neutral. That is precisely what decision D-01 expected fine-tuning on 300 to
+500 labelled pairs to fix, and those pairs still do not exist. The test for
+this case asserts only that the model leans away from contradiction, because
+asserting entailment would be asserting something the model does not do.
+
+### C-84 The full real-model chain runs, and the fixture flag had to be fixed to say so
+
+`scripts/demo_real_models.py` now runs with **F-11, F-12 and F-18 all
+loading trained weights** over a real published privacy policy. Result: 20
+segments, 199 practices, 32 judgements, 14 verdicts, 6 evidence records,
+every quote an exact slice of the stored document.
+
+Real alignment changed the verdicts, which is the evidence that it is doing
+work rather than passing through: Personal info became **Contradictory**,
+driven by "Sci-News.com does not sell, trade or rent your personal
+information to third parties", and App activity became **Undetermined**
+through abstention. Under the stub both had been In-policy-not-declared.
+
+**One defect found by reading the output.** The first real-model run still
+printed `fixture models used: True`, because the demonstration registered its
+`model_version` rows with `register_fixture_models`, a test helper. The flag
+has to track reality in both directions — understating a real run is the
+same class of error as overstating a stubbed one — so the script now
+registers each row with the checkpoint that actually ran, and the flag reads
+False.
+
+**It is still a demonstration and not an audit.** No Data Safety declaration
+exists for any application, so the declaration side is empty by fact rather
+than by finding. That is now the only thing standing between this system and
+a real audit.
