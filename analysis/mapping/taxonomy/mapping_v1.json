@@ -1,0 +1,283 @@
+{
+  "version_label": "opp115-to-ds-v1",
+  "authored_on": "2026-11-06",
+  "source_vocabularies": {
+    "opp115_category": "ml/data/opp115_schema.py CATEGORIES (10 values, verified against the released corpus)",
+    "opp115_data_type": "the 'Personal Information Type' attribute, 17 distinct values measured across all 115 annotated policies on 2026-11-06",
+    "ds_category": "analysis/vocabulary.py DS_CATEGORIES (14 values)"
+  },
+  "principles": [
+    "Only the two OPP-115 categories that describe data being collected or shared can name a Data Safety category. The other eight describe practices *about* data - choice, access, retention, security, policy change, Do Not Track, specific audiences, other - and a Data Safety category is a statement about what data is handled, not about how it is governed. Mapping 'Data Security' to a data category would report a security promise as a collection declaration.",
+    "A rule is keyed on the data type, because the Data Safety taxonomy is a taxonomy of data. An OPP-115 category alone never names one: 'First Party Collection/Use' says the first party collects something, not what.",
+    "is_partial marks a correspondence that is real but looser than one-to-one, either because the OPP-115 value is broader than the Data Safety category or because it spans more than one. A partial mapping is still evidence; it is flagged so a report can say how tight the correspondence was.",
+    "A value with no defensible counterpart is left out and listed under unmapped_data_types with the reason. An absent rule produces no mapped practice, which is the correct outcome: silence, not a guess."
+  ],
+  "collection_categories": [
+    "First Party Collection/Use",
+    "Third Party Sharing/Collection"
+  ],
+  "rules": [
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "Location",
+      "ds_category": "Location",
+      "is_partial": false,
+      "rationale": "Both names denote the user's geographic position. Data Safety's Location covers approximate and precise location; OPP-115 does not distinguish them, which does not affect the category."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "Contact",
+      "ds_category": "Personal info",
+      "is_partial": false,
+      "rationale": "OPP-115 'Contact' is the user's own contact details - name, email, postal address, phone. Data Safety places those under Personal info. It is NOT Data Safety 'Contacts', which is the user's address book, i.e. other people's details. The two names are near-homographs for different things and conflating them would be the single easiest error in this table."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "Financial",
+      "ds_category": "Financial info",
+      "is_partial": false,
+      "rationale": "Payment details, purchase history and credit information in both taxonomies."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "Health",
+      "ds_category": "Health and fitness",
+      "is_partial": false,
+      "rationale": "Health information in both. Data Safety splits health from fitness within one category, which OPP-115 does not, and the split does not change the mapping."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "Demographic",
+      "ds_category": "Personal info",
+      "is_partial": false,
+      "rationale": "Age, gender, race and similar attributes. Data Safety lists race, ethnicity, political or religious beliefs, sexual orientation and other user characteristics under Personal info."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "Personal identifier",
+      "ds_category": "Personal info",
+      "is_partial": false,
+      "rationale": "Data Safety's Personal info includes 'User IDs' and other identifiers attached to a person. Distinct from Device or other IDs, which identifies hardware or an installation rather than a person."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "IP address and device IDs",
+      "ds_category": "Device or other IDs",
+      "is_partial": false,
+      "rationale": "Data Safety's Device or other IDs names device identifiers, advertising identifiers and IP-derived identifiers explicitly."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "Cookies and tracking elements",
+      "ds_category": "Device or other IDs",
+      "is_partial": true,
+      "rationale": "Cookies and pixels function as identifiers tied to a browser or installation, which is what Device or other IDs covers. Partial: a cookie may also carry session state that is not an identifier, and OPP-115 does not separate the two."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "Computer information",
+      "ds_category": "Device or other IDs",
+      "is_partial": true,
+      "rationale": "Browser type, operating system and hardware attributes. Partial, and deliberately so: Data Safety has no category for non-identifying device characteristics, and this OPP-115 value conflates attributes used for identification with attributes used for compatibility. The flag records that the correspondence is one-directional."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "User online activities",
+      "ds_category": "App activity",
+      "is_partial": true,
+      "rationale": "In-application actions, searches and interaction history. Partial because this OPP-115 value also covers activity outside the application, which Data Safety separates into Web browsing; both rules are present and a practice of this type maps to both."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "User online activities",
+      "ds_category": "Web browsing",
+      "is_partial": true,
+      "rationale": "The second half of the same split. Data Safety's Web browsing is browsing history outside the application. Emitting both and flagging each partial is more honest than silently choosing one, because the source value genuinely does not distinguish them."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "Generic personal information",
+      "ds_category": "Personal info",
+      "is_partial": true,
+      "rationale": "The annotator recorded personal information without naming a kind. Partial: the correspondence holds at the level of 'this is personal information' and nowhere narrower."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "User profile",
+      "ds_category": "Personal info",
+      "is_partial": true,
+      "rationale": "Account profile attributes. Partial: a profile aggregates several Data Safety categories and the value does not say which are present."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "User Profile",
+      "ds_category": "Personal info",
+      "is_partial": true,
+      "rationale": "The same value with the capitalisation the corpus also uses. Both spellings occur in the released annotations (216 and 112 occurrences), so both are listed rather than normalised: normalising here would hide a corpus fact from anyone reading this table against the data."
+    },
+    {
+      "opp115_category": "First Party Collection/Use",
+      "opp115_data_type": "Social media data",
+      "ds_category": "Personal info",
+      "is_partial": true,
+      "rationale": "Profile and activity imported from a social network. Partial: it may also carry Contacts or Photos and videos, which this value does not distinguish."
+    },
+
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "Location",
+      "ds_category": "Location",
+      "is_partial": false,
+      "rationale": "The data type is the same; the sharing dimension is carried separately by the declaration's is_shared flag and is not part of this mapping."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "Contact",
+      "ds_category": "Personal info",
+      "is_partial": false,
+      "rationale": "As for first-party Contact: the user's own contact details, which Data Safety places under Personal info."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "Financial",
+      "ds_category": "Financial info",
+      "is_partial": false,
+      "rationale": "Same data type, third-party context."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "Health",
+      "ds_category": "Health and fitness",
+      "is_partial": false,
+      "rationale": "Same data type, third-party context."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "Demographic",
+      "ds_category": "Personal info",
+      "is_partial": false,
+      "rationale": "Same data type, third-party context."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "Personal identifier",
+      "ds_category": "Personal info",
+      "is_partial": false,
+      "rationale": "Same data type, third-party context."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "IP address and device IDs",
+      "ds_category": "Device or other IDs",
+      "is_partial": false,
+      "rationale": "Same data type, third-party context."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "Cookies and tracking elements",
+      "ds_category": "Device or other IDs",
+      "is_partial": true,
+      "rationale": "Same data type and same partiality as the first-party rule. Third-party cookies are the commonest form of this practice."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "Computer information",
+      "ds_category": "Device or other IDs",
+      "is_partial": true,
+      "rationale": "Same data type and same partiality as the first-party rule."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "User online activities",
+      "ds_category": "App activity",
+      "is_partial": true,
+      "rationale": "Same split as the first-party rule; both halves are present."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "User online activities",
+      "ds_category": "Web browsing",
+      "is_partial": true,
+      "rationale": "Same split as the first-party rule; both halves are present."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "Generic personal information",
+      "ds_category": "Personal info",
+      "is_partial": true,
+      "rationale": "Same value and same partiality as the first-party rule."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "User profile",
+      "ds_category": "Personal info",
+      "is_partial": true,
+      "rationale": "Same value and same partiality as the first-party rule."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "User Profile",
+      "ds_category": "Personal info",
+      "is_partial": true,
+      "rationale": "The corpus's second capitalisation of the same value."
+    },
+    {
+      "opp115_category": "Third Party Sharing/Collection",
+      "opp115_data_type": "Social media data",
+      "ds_category": "Personal info",
+      "is_partial": true,
+      "rationale": "Same value and same partiality as the first-party rule."
+    }
+  ],
+  "unmapped_data_types": [
+    {
+      "opp115_data_type": "Unspecified",
+      "occurrences": 4299,
+      "reason": "The annotator recorded that no data type was identifiable. It is the corpus's explicit 'nothing to select' value. Mapping the commonest value in the attribute to any Data Safety category would manufacture a declaration out of an annotator's abstention, and it would do so 4,299 times."
+    },
+    {
+      "opp115_data_type": "Other",
+      "occurrences": 604,
+      "reason": "A residual bucket with no shared meaning across its members. Any single Data Safety category would be wrong for most of them."
+    },
+    {
+      "opp115_data_type": "Survey data",
+      "occurrences": 95,
+      "reason": "Data Safety has no survey category. Survey responses may contain anything from demographics to health, and the value does not say which, so there is no category this can be asserted to be."
+    }
+  ],
+  "unmapped_categories": [
+    {
+      "opp115_category": "User Choice/Control",
+      "reason": "Describes the control a user has over data, not which data is handled. Opt-out language is not a collection declaration."
+    },
+    {
+      "opp115_category": "User Access, Edit and Deletion",
+      "reason": "Describes access and deletion rights, not categories of data collected."
+    },
+    {
+      "opp115_category": "Data Retention",
+      "reason": "Describes how long data is kept. A retention period is a property of a practice, not a data category."
+    },
+    {
+      "opp115_category": "Data Security",
+      "reason": "Describes protection measures. Reporting a security promise as a Data Safety category would turn 'we encrypt your data' into a declaration that the data is collected, which is a different claim and, in a consistency audit, a damaging one."
+    },
+    {
+      "opp115_category": "Policy Change",
+      "reason": "Describes how the policy itself is amended."
+    },
+    {
+      "opp115_category": "Do Not Track",
+      "reason": "Describes the response to a browser signal."
+    },
+    {
+      "opp115_category": "International and Specific Audiences",
+      "reason": "Describes jurisdiction and audience, such as children or EU residents, not data categories."
+    },
+    {
+      "opp115_category": "Other",
+      "reason": "Residual bucket, by definition without a specific meaning to map."
+    }
+  ]
+}

@@ -585,3 +585,154 @@ def test_the_rule_count_reflects_both_general_and_specific_rules(engine):
         version_label="two-rules",
     )
     assert mapper.rule_count == 2
+
+
+# -- M10: F-15 rules keyed on a data type, and the F-12 signal that keys them
+
+
+class StubSpanExtractor:
+    """Deterministic F-12 substitute.
+
+    Returns a data-type span for a segment mentioning location. Like the
+    other stubs here it is injected, and an audit that uses it records
+    fixture model identifiers.
+    """
+
+    def __init__(self, value: str = "Location", confidence: float = 0.9) -> None:
+        self.value = value
+        self.confidence = confidence
+        self.calls = 0
+
+    def extract(self, segment_text, document_text, segment_char_start):
+        from analysis.models.span_extractor import ExtractedSpan
+
+        self.calls += 1
+        lowered = segment_text.lower()
+        needle = "location"
+        index = lowered.find(needle)
+        if index < 0:
+            return []
+        start = segment_char_start + index
+        return [
+            ExtractedSpan(
+                span_type="data_type",
+                start=start,
+                end=start + len(needle),
+                text=document_text[start : start + len(needle)],
+                confidence=self.confidence,
+                abstained=self.confidence < 0.5,
+                value=self.value,
+            )
+        ]
+
+
+def authored_mapper():
+    from analysis.mapping.rule_loader import load_mapping_file
+
+    return load_mapping_file().mapper()
+
+
+def test_a_data_type_only_table_with_no_extractor_refuses_the_audit(engine, tmp_path):
+    """The second half of the F-15 guard, and the one that bites now.
+
+    Every authored rule is keyed on a data type. With no F-12 extractor no
+    practice can carry one, so the whole table is unreachable: the mapping
+    would be empty for structural reasons and the report would blame the
+    application for it. `rule_count` alone cannot catch this, because the
+    table is complete and correct.
+    """
+    mapper = authored_mapper()
+    assert mapper.rule_count > 0 and mapper.general_rule_count == 0
+
+    with Session(engine) as session:
+        audit_id = _seed(session, tmp_path)
+        pipeline = AuditPipeline(
+            session,
+            classifier=StubClassifier(),
+            aligner=StubAligner(),
+            mapper=mapper,
+            repository_root=tmp_path,
+            span_extractor=None,
+        )
+        with pytest.raises(AuditFailedError, match="no F-12 span extractor is loaded"):
+            pipeline.run(audit_id)
+        session.commit()
+
+        assert session.get(AuditRun, audit_id).status == STATUS_FAILED
+        assert not session.scalars(select(Verdict)).all()
+
+
+def test_the_authored_rules_fire_once_f12_supplies_a_data_type(engine, tmp_path):
+    """The chain F-11 -> F-14 -> F-12 -> F-15 -> F-18 -> ALG-8, end to end,
+    with the real rule table and stubs standing in only for the models."""
+    extractor = StubSpanExtractor()
+    with Session(engine) as session:
+        audit_id = _seed(session, tmp_path)
+        AuditPipeline(
+            session,
+            classifier=StubClassifier(),
+            aligner=StubAligner(),
+            mapper=authored_mapper(),
+            repository_root=tmp_path,
+            span_extractor=extractor,
+        ).run(audit_id)
+        session.commit()
+
+        assert extractor.calls > 0, "the pipeline never consulted F-12"
+        location = session.scalars(
+            select(Verdict).where(Verdict.ds_category == "Location")
+        ).one()
+        assert location.found_in_policy is True
+        assert location.verdict_value == VERDICT_CONSISTENT
+
+
+def test_an_unmapped_data_type_produces_no_verdict_rather_than_a_guess(engine, tmp_path):
+    """'Unspecified' is the corpus's own 'nothing to select' value.
+
+    A practice carrying it must reach no Data Safety category at all. If it
+    mapped anywhere, the commonest value in the attribute would manufacture
+    a declaration thousands of times over.
+    """
+    with Session(engine) as session:
+        audit_id = _seed(session, tmp_path)
+        AuditPipeline(
+            session,
+            classifier=StubClassifier(),
+            aligner=StubAligner(),
+            mapper=authored_mapper(),
+            repository_root=tmp_path,
+            span_extractor=StubSpanExtractor(value="Unspecified"),
+        ).run(audit_id)
+        session.commit()
+
+        location = session.scalars(
+            select(Verdict).where(Verdict.ds_category == "Location")
+        ).one()
+        assert location.found_in_policy is False
+
+
+def test_a_span_that_does_not_slice_out_of_the_document_fails_the_audit(
+    engine, tmp_path
+):
+    """A span whose offsets have drifted would quote text the policy does not
+    contain. That is a defect in the extractor, not a property of the policy,
+    so the audit stops rather than publishing the quote."""
+
+    class BrokenExtractor:
+        def extract(self, segment_text, document_text, segment_char_start):
+            raise ValueError("span 10:20 does not slice back out of the document")
+
+    with Session(engine) as session:
+        audit_id = _seed(session, tmp_path)
+        pipeline = AuditPipeline(
+            session,
+            classifier=StubClassifier(),
+            aligner=StubAligner(),
+            mapper=authored_mapper(),
+            repository_root=tmp_path,
+            span_extractor=BrokenExtractor(),
+        )
+        with pytest.raises(AuditFailedError, match="unusable span"):
+            pipeline.run(audit_id)
+        session.commit()
+        assert session.get(AuditRun, audit_id).status == STATUS_FAILED

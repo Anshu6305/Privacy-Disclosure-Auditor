@@ -62,6 +62,18 @@ class TaxonomyMapper:
                 self._specific.setdefault(key, []).append(rule)
 
     @property
+    def general_rule_count(self) -> int:
+        """Rules that apply to a whole OPP-115 category, with no data type.
+
+        Distinguished from `rule_count` because only these can fire when the
+        caller has no data type to offer. A version made entirely of
+        data-type rules is a complete, correct table that nevertheless maps
+        nothing without F-12, and a caller has to be able to tell that state
+        from a table that simply has no rule for this category.
+        """
+        return sum(len(rules) for rules in self._general.values())
+
+    @property
     def rule_count(self) -> int:
         """How many rules this version holds.
 

@@ -197,12 +197,12 @@ Milestone 1 except F-26 above.
 | F-08 | `analysis/text/extractor.py` | M4 | Implemented and verified |
 | F-09 | `analysis/text/segmenter.py` | M4 | Implemented and verified |
 | F-10 | `analysis/text/validator.py` | M4 | Implemented and verified |
-| F-11 | `analysis/models/practice_classifier.py` (M5); `analysis/models/improved_classifier.py` (M6) | M5, M6 | Baseline **implemented and evaluated**. Improved variant **implemented, not trained and not evaluated** — same split, seed and evaluation module, so a comparison is possible once trained |
-| F-12 | `ml/data/opp115_spans.py`, `analysis/models/span_extractor.py` | M6 | **Dataset complete and verified**: 23,150 slice-verified spans (11,913 data type, 11,237 purpose) from 115 policies. BIO encoding, offset translation and decoding tested. **Tagger not trained**; training loop outstanding |
+| F-11 | `analysis/models/practice_classifier.py` (M5); `analysis/models/improved_classifier.py` (M6) | M5, M6, M10 | Baseline **implemented, evaluated and rebuilt**: M10's rebuild reproduced M5's figures exactly (test Macro-F1 0.7489, Micro-F1 0.7690) and the checkpoint now loads through the registry, which had been pointing at a directory the trainer never writes (C-74). Improved variant **implemented, not trained and not evaluated** |
+| F-12 | `ml/data/opp115_spans.py`, `ml/data/span_training_data.py`, `analysis/models/span_extractor.py`, `ml/span_backend.py`, `ml/train_span_extractor.py` | M6, M10 | **Dataset complete and verified**: 23,150 slice-verified spans → 2,466 tagged segments, 55 value-carrying BIO labels, every offset verified, M5's policy split and seed. **Training loop written and dry-run verified; no checkpoint trained yet** — GPU workflow in `notebooks/train_f12_colab.ipynb`. Tags name the attribute value (`B-data_type:Contact`), which is what F-15 keys on |
 | F-13 | `analysis/models/variant.py` | M6 | Not implemented |
 | F-18 | `analysis/alignment/nli.py` | M6 | **Zero-shot path implemented** (D-01 Option A): premise/hypothesis construction, the three approved labels, abstention preserved. **Never run against a real NLI checkpoint. Fine-tuning not started** — the 300–500 labelled pairs do not exist |
 | F-14 | `analysis/confidence/gate.py` | M7 | Implemented and verified |
-| F-15 | `analysis/mapping/taxonomy_mapper.py` | M7, M8 | Mechanism only — **no rules authored**. M8's pipeline refuses to run an audit while `rule_count == 0` |
+| F-15 | `analysis/mapping/taxonomy_mapper.py`, `analysis/mapping/rule_loader.py`, `analysis/mapping/taxonomy/mapping_v1.json` | M7, M8, M10 | **Rules authored and tested** — 30 rules over 14 of the corpus's 17 data types, 3 data types and 8 categories explicitly unmapped with reasons. All 30 are keyed on a data type, so the pipeline refuses unless F-12 supplies one |
 | F-16 | `analysis/mapping/declaration_normaliser.py` | M7 | Implemented and verified |
 | F-17 | `analysis/mapping/candidate_builder.py` | M7 | Implemented and verified |
 | F-18 | `analysis/models/semantic_aligner.py` | M6 | Blocked — no training data; decision pending (plan §7) |

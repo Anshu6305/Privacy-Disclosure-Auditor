@@ -59,7 +59,7 @@ from sqlalchemy.orm import Session
 from analysis.confidence.gate import apply_threshold_to_all
 from analysis.mapping.candidate_builder import build_candidates
 from analysis.mapping.declaration_normaliser import normalise_declaration
-from analysis.mapping.taxonomy_mapper import TaxonomyMapper
+from analysis.mapping.taxonomy_mapper import MappedPolicyPractice, TaxonomyMapper
 from analysis.text.models import AnalysabilityThresholds
 from analysis.text.pipeline import process_policy_document
 from analysis.verdict.models import (
@@ -72,6 +72,7 @@ from analysis.vocabulary import (
     RECORD_ABSENCE,
     RECORD_EVIDENCE,
     RECORD_INCONCLUSIVE,
+    SPAN_DATA_TYPE,
     STATUS_COMPLETED,
     STATUS_FAILED,
     STATUS_RUNNING,
@@ -102,6 +103,15 @@ class Aligner(Protocol):
         ...
 
 
+class SpanExtractorProtocol(Protocol):
+    """F-12. Satisfied by `analysis.models.span_extractor.SpanExtractor`."""
+
+    def extract(
+        self, segment_text: str, document_text: str, segment_char_start: int
+    ) -> list:
+        ...
+
+
 class AuditFailedError(RuntimeError):
     """The run cannot produce an honest report. Carries the stored reason."""
 
@@ -127,6 +137,7 @@ class AuditPipeline:
         aligner: Aligner,
         mapper: TaxonomyMapper,
         repository_root: Path | str = ".",
+        span_extractor: SpanExtractorProtocol | None = None,
     ) -> None:
         if classifier is None or aligner is None:
             raise ValueError(
@@ -138,6 +149,11 @@ class AuditPipeline:
         self._classifier = classifier
         self._aligner = aligner
         self._mapper = mapper
+        # F-12. Optional, because a run can be mapped by general rules alone
+        # if the active mapping version has any. When it has none, the guard
+        # in `_execute` refuses rather than letting the run produce verdicts
+        # nothing could have mapped.
+        self._span_extractor = span_extractor
         self._snapshots = SnapshotRepository(session, policy_root=repository_root)
 
     # -- the run ----------------------------------------------------------
@@ -243,7 +259,23 @@ class AuditPipeline:
                 "mapping rules before running an audit."
             )
 
-        mapped = self._mapper.map_all(gated)
+        # The second half of the same guard, and the one that bites now that
+        # rules exist. F-15's rules are keyed on the data type, which F-12
+        # supplies. With no extractor and no general rules, every rule in the
+        # table is unreachable: the mapping would be empty for structural
+        # reasons, and the report would blame the application for it.
+        if self._span_extractor is None and self._mapper.general_rule_count == 0:
+            raise AuditFailedError(
+                f"taxonomy mapping version {self._mapper.version_label!r} has "
+                f"{self._mapper.rule_count} rules and all of them are keyed on "
+                "a data type, but no F-12 span extractor is loaded, so no "
+                "practice can carry one. Nothing could map, and every declared "
+                "category would be reported as missing from the policy. Load "
+                "the F-12 checkpoint, or add general rules to the mapping "
+                "version."
+            )
+
+        mapped = self._map_practices(gated, processed)
 
         # F-16 and F-17 ------------------------------------------------------
         declaration = self._load_declaration_state(snapshot.snapshot_id)
@@ -277,6 +309,50 @@ class AuditPipeline:
             practice_count=len(practices),
             uses_fixture_models=self._uses_fixture_models(audit),
         )
+
+    def _map_practices(self, gated, processed) -> tuple:
+        """F-15, keyed on the data types F-12 found in each practice's segment.
+
+        A practice is mapped once per distinct data-type value found in its
+        own segment. Without an extractor, or for a segment where none was
+        found, the practice is still offered to the mapper with no data type,
+        so a version that does hold general rules behaves exactly as before.
+
+        An abstained span still contributes its value. The abstention travels
+        with the practice, not with the mapping: discarding a low-confidence
+        data type here would quietly turn an uncertain finding into no
+        finding, which is the one thing the gate is designed not to do.
+        """
+        document_text = processed.cleaned_text
+        mapped: list[MappedPolicyPractice] = []
+        for practice in gated:
+            values: list[str | None] = []
+            if self._span_extractor is not None:
+                try:
+                    spans = self._span_extractor.extract(
+                        practice.segment.text,
+                        document_text,
+                        practice.segment.char_start,
+                    )
+                except ValueError as failure:
+                    # A span that does not slice back out of the document is
+                    # a defect in the extractor, not a property of the policy.
+                    raise AuditFailedError(
+                        f"F-12 produced an unusable span: {failure}"
+                    ) from failure
+                values = [
+                    span.value
+                    for span in spans
+                    if getattr(span, "span_type", None) == SPAN_DATA_TYPE
+                    and getattr(span, "value", None)
+                ]
+            seen: set[str | None] = set()
+            for value in values or [None]:
+                if value in seen:
+                    continue
+                seen.add(value)
+                mapped.extend(self._mapper.map_practice(practice, value))
+        return tuple(mapped)
 
     @staticmethod
     def _analysability_thresholds(

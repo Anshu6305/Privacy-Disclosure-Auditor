@@ -34,7 +34,14 @@ from analysis.vocabulary import (
     VARIANT_BASELINE,
 )
 
-DEFAULT_BASELINE_CHECKPOINT = Path("ml/checkpoints/baseline_classifier")
+#: Where `ml/train_baseline_classifier.py` actually writes its artefact.
+#:
+#: This pointed at `ml/checkpoints/baseline_classifier` until M10, a directory
+#: the trainer has never written. The registry would therefore have reported
+#: the model unavailable even on a machine that had just rebuilt it, and the
+#: message would have told the operator to run the script again. Found by
+#: rebuilding the checkpoint and watching the loader still fail (C-74).
+DEFAULT_BASELINE_CHECKPOINT = Path("ml/checkpoints/classifier-baseline-v1")
 
 
 class ModelsUnavailableError(RuntimeError):
@@ -77,6 +84,32 @@ def load_aligner(threshold: float = 0.50):
             "run with a real aligner."
         ) from exc
     return ZeroShotAligner(backend, threshold=threshold)
+
+
+def load_span_extractor(checkpoint: Path | str | None = None):
+    """F-12, the data-type and purpose span extractor.
+
+    F-15's rules are keyed on a data type, so without this nothing a policy
+    says can reach a Data Safety category. `AuditPipeline` refuses to run in
+    that configuration rather than reporting an empty mapping as a finding.
+
+    Raises rather than substituting a heuristic tagger. A different tagger
+    moves sentence and span boundaries, so the same policy would produce
+    different evidence offsets depending on what happened to be installed,
+    and a report's quotes would depend on the machine that produced them.
+    """
+    from analysis.models.span_extractor import SpanExtractor
+    from ml.span_backend import (
+        DEFAULT_CHECKPOINT,
+        SpanBackendUnavailableError,
+        TransformerSpanTagger,
+    )
+
+    try:
+        backend = TransformerSpanTagger(checkpoint or DEFAULT_CHECKPOINT)
+    except SpanBackendUnavailableError as exc:
+        raise ModelsUnavailableError(str(exc)) from exc
+    return SpanExtractor(backend)
 
 
 def load_mapper(session: Session) -> TaxonomyMapper:
@@ -137,6 +170,7 @@ def build_pipeline_factory(repository_root: Path | str = "."):
     """
     classifier = load_baseline_classifier()
     aligner = load_aligner(get_settings().alignment_confidence_threshold)
+    span_extractor = load_span_extractor()
 
     def factory(session: Session) -> AuditPipeline:
         return AuditPipeline(
@@ -145,6 +179,7 @@ def build_pipeline_factory(repository_root: Path | str = "."):
             aligner=aligner,
             mapper=load_mapper(session),
             repository_root=repository_root,
+            span_extractor=span_extractor,
         )
 
     return factory
@@ -180,5 +215,6 @@ __all__ = [
     "load_aligner",
     "load_baseline_classifier",
     "load_mapper",
+    "load_span_extractor",
     "register_fixture_models",
 ]

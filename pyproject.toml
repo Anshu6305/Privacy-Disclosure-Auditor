@@ -32,6 +32,12 @@ markers = [
 ]
 
 [tool.ruff]
+# Jupyter cells are not modules: a Colab notebook legitimately runs `!pip`
+# before importing, and imports where the narrative needs them. Linting them
+# as modules yields only E402/I001 noise, so the notebooks are excluded and
+# reviewed as documents. The code they *run* is the repository's own, which
+# is linted.
+extend-exclude = ["notebooks"]
 line-length = 100
 # The OLDEST supported version, not the recommended one. requires-python
 # allows 3.10, so linting at py312 would accept code that breaks there — it

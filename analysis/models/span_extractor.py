@@ -52,6 +52,15 @@ class ExtractedSpan:
     text: str
     confidence: float
     abstained: bool = False
+    #: The OPP-115 attribute value the tagger assigned, such as "Contact" or
+    #: "Advertising". Added in M10 and optional by default.
+    #:
+    #: F-15's rules are keyed on this value, not on the span type: a span of
+    #: type ``data_type`` says that the sentence names *some* data, and only
+    #: the value says which, so without it no span can reach a Data Safety
+    #: category. A tagger trained on span boundaries alone leaves this None
+    #: and the span is still valid evidence, just not mappable.
+    value: str | None = None
 
     def __post_init__(self) -> None:
         if self.span_type not in SPAN_TYPES:
@@ -114,12 +123,13 @@ def decode_bio(
     """
     spans: list[ExtractedSpan] = []
     current_type: str | None = None
+    current_value: str | None = None
     current_start = 0
     current_end = 0
     confidences: list[float] = []
 
     def close() -> None:
-        nonlocal current_type
+        nonlocal current_type, current_value
         if current_type is None:
             return
         start = current_start + offset_shift
@@ -135,9 +145,11 @@ def decode_bio(
                     text=text,
                     confidence=mean,
                     abstained=mean < threshold,
+                    value=current_value,
                 )
             )
         current_type = None
+        current_value = None
         confidences.clear()
 
     for token in tokens:
@@ -145,13 +157,20 @@ def decode_bio(
         if tag == "O":
             close()
             continue
-        prefix, _, span_type = tag.partition("-")
+        prefix, _, payload = tag.partition("-")
+        # A tag may name the attribute value after a colon, as in
+        # "B-data_type:Contact". Plain "B-data_type" remains valid and yields
+        # a span with no value: both shapes exist because a boundary-only
+        # tagger is still useful as evidence even though F-15 cannot key on it.
+        span_type, _, value = payload.partition(":")
+        value = value or None
         if span_type not in SPAN_TYPES:
             close()
             continue
-        if prefix == "B" or current_type != span_type:
+        if prefix == "B" or current_type != span_type or current_value != value:
             close()
             current_type = span_type
+            current_value = value
             current_start = token.start
         current_end = token.end
         confidences.append(token.confidence)

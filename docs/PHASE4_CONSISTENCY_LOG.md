@@ -1864,3 +1864,94 @@ rendering an empty layout that looks right.
 live API. Component tests mock `fetch`, which is the right boundary for them
 but means the proxy configuration, CORS and the production build served by
 FastAPI are exercised only by running the stack.
+
+### C-74 The model registry pointed at a directory the trainer never writes
+
+`DEFAULT_BASELINE_CHECKPOINT` was `ml/checkpoints/baseline_classifier`.
+`ml/train_baseline_classifier.py` has always written
+`ml/checkpoints/classifier-baseline-v1`.
+
+So the registry would have reported the M5 model unavailable on a machine
+that had just rebuilt it, and its message would have told the operator to run
+the training script — the thing they had done. Found by rebuilding the
+checkpoint and watching the loader still fail, not by reading either file.
+
+It had never shown up because no checkpoint existed anywhere in this
+environment, so the loader failed for a true reason and a second, false one
+at the same time.
+
+### C-75 F-15 rules authored: 30 rules, 11 explicit refusals to map
+
+Authored against the real vocabularies, not from memory: the 17 distinct
+`Personal Information Type` values were counted across all 115 annotated
+policies before a single rule was written.
+
+**What is deliberately not mapped.** Eight of the ten OPP-115 categories
+describe practices *about* data — choice, access, retention, security, policy
+change, Do Not Track, specific audiences, other. A Data Safety category is a
+statement about what data is handled. Mapping "Data Security" to a data
+category would report "we encrypt your data" as a declaration that the data
+is collected, which in a consistency audit is a damaging mistake rather than
+a loose one. Three data types are unmapped too, "Unspecified" above all: it
+is the corpus's own "nothing to select" value and the commonest in the
+attribute, and mapping it would manufacture a declaration out of an
+annotator's abstention 4,299 times.
+
+**The trap this table is built around.** OPP-115 "Contact" is the user's own
+contact details; Data Safety "Contacts" is the user's address book. They are
+near-homographs for different things, and conflating them would make every
+policy mentioning an email address look like a declaration about the user's
+contact list. "Contact" maps to Personal info, and a test exists for that one
+line alone.
+
+**Ambiguity is emitted, not resolved.** "User online activities" covers both
+in-app actions and browsing outside it, which Data Safety separates into App
+activity and Web browsing. Both rules are present and both flagged partial.
+Silently choosing one would assert a precision the annotation does not have.
+
+16 of 30 rules are partial. Both corpus spellings of "User profile" are
+listed rather than normalised, because normalising in the table would hide a
+corpus fact from anyone reading the rules against the data.
+
+### C-76 A complete rule table that can map nothing, and the guard that was not enough
+
+Every authored rule is keyed on a data type, because an OPP-115 category
+alone never names a Data Safety category. The data type comes from F-12.
+
+So the table is complete, correct, and maps nothing at all until F-12 runs —
+and `rule_count` is 30, which means the M8 guard from C-69 would have let the
+audit proceed. Every declared category would then have reached ALG-8 with the
+declaration side only and been reported **Declared-not-in-policy**: exactly
+the manufactured-findings failure that guard was written to prevent, arriving
+through the one door it did not cover. Verified by running the mapper, not by
+reading it: `map_all` with no data type returns `()` against the full table.
+
+`AuditPipeline` now also refuses when the mapper has no general rules and no
+span extractor is loaded, naming both facts. `TaxonomyMapper.general_rule_count`
+was added for it, because a caller must be able to tell "this version maps
+nothing to that category" from "nothing in this version can fire at all" —
+states that produce identical empty mappings and mean entirely different
+things about a report built on them.
+
+A test asserts `general_rule_count == 0` for the authored table, so if a
+general rule is ever added the guard is revisited rather than silently
+bypassed.
+
+### C-77 F-12 tags carry the attribute value, which is an additive change
+
+A tagger that learned span boundaries alone would emit `B-data_type` and
+produce spans no F-15 rule could ever match, since the rules are keyed on the
+value. F-12's labels are therefore compound — `B-data_type:Contact` — giving
+55 labels over the two span types.
+
+`ExtractedSpan` gained an optional `value` field and `decode_bio` learned to
+split a compound tag. Both are additive: a plain `B-data_type` still decodes,
+to a span with `value=None`, which remains valid evidence and simply cannot
+be mapped. No existing test changed.
+
+The dataset derived from this: 2,466 tagged segments, 204,092 tokens of which
+41.3% are inside a span, on M5's policy split with M5's seed — 80 train, 17
+validation, 18 test policies. Every token was checked to slice out of its own
+segment before the dataset was accepted. 7 of the 54 non-O labels have fewer
+than 10 test spans and are reported as not measurable, which is the same
+rare-class limitation M5 recorded and is not fixed here.
