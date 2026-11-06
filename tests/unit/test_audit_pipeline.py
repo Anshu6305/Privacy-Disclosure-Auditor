@@ -736,3 +736,203 @@ def test_a_span_that_does_not_slice_out_of_the_document_fails_the_audit(
             pipeline.run(audit_id)
         session.commit()
         assert session.get(AuditRun, audit_id).status == STATUS_FAILED
+
+
+# -- the worker must never leave an audit stuck in `running` ----------------
+
+
+def test_an_unexpected_error_leaves_the_audit_failed_not_running(engine, tmp_path):
+    """The defect that stranded the Spotify pilot audit.
+
+    The claim is committed before the work begins, so a rollback alone
+    leaves the row `running` for ever. `claim_next_audit` returns nothing
+    while any audit is running, so one unexpected error did not fail one
+    audit — it wedged the whole queue permanently.
+    """
+
+    class ExplodingClassifier:
+        def predict_practices(self, segment, first_practice_id=1, minimum_score=0.0):
+            raise RuntimeError("the checkpoint is corrupt")
+
+    with Session(engine) as session:
+        audit_id = _seed(session, tmp_path)
+
+    worker = AuditWorker(
+        lambda: Session(engine),
+        lambda session: AuditPipeline(
+            session,
+            classifier=ExplodingClassifier(),
+            aligner=StubAligner(),
+            mapper=stub_mapper(),
+            repository_root=tmp_path,
+        ),
+    )
+    with pytest.raises(RuntimeError, match="checkpoint is corrupt"):
+        worker.run_once()
+
+    with Session(engine) as session:
+        audit = session.get(AuditRun, audit_id)
+        assert audit.status == STATUS_FAILED, "the audit was left running"
+        assert audit.completed_at is not None
+        assert "RuntimeError" in audit.failure_reason
+        assert "checkpoint is corrupt" in audit.failure_reason
+
+
+def test_the_queue_is_not_wedged_by_an_unexpected_error(engine, tmp_path):
+    """The consequence worth asserting separately: a later audit still runs."""
+
+    class ExplodingClassifier:
+        def predict_practices(self, segment, first_practice_id=1, minimum_score=0.0):
+            raise RuntimeError("boom")
+
+    with Session(engine) as session:
+        first = _seed(session, tmp_path)
+
+    broken = AuditWorker(
+        lambda: Session(engine),
+        lambda session: AuditPipeline(
+            session,
+            classifier=ExplodingClassifier(),
+            aligner=StubAligner(),
+            mapper=stub_mapper(),
+            repository_root=tmp_path,
+        ),
+    )
+    with pytest.raises(RuntimeError):
+        broken.run_once()
+
+    # A second audit for the same application, queued after the failure.
+    with Session(engine) as session:
+        original = session.get(AuditRun, first)
+        second = AuditRun(
+            app_id=original.app_id,
+            snapshot_id=original.snapshot_id,
+            taxonomy_mapping_version_id=original.taxonomy_mapping_version_id,
+            classification_model_id=original.classification_model_id,
+            span_model_id=original.span_model_id,
+            alignment_model_id=original.alignment_model_id,
+            status=STATUS_QUEUED,
+            threshold_config=original.threshold_config,
+        )
+        session.add(second)
+        session.commit()
+        second_id = second.audit_id
+
+    healthy = AuditWorker(
+        lambda: Session(engine), lambda session: build_pipeline(session, tmp_path)
+    )
+    assert healthy.run_once() is True, "the queue was still blocked"
+    with Session(engine) as session:
+        assert session.get(AuditRun, second_id).status == STATUS_COMPLETED
+
+
+def test_a_model_that_will_not_load_fails_the_audit_rather_than_stranding_it(
+    engine, tmp_path
+):
+    """Building the pipeline loads the models, so it must be inside the try.
+
+    It was outside, which meant an unavailable checkpoint stranded the audit
+    exactly as a mid-run crash did.
+    """
+
+    def cannot_build(_session):
+        from app.services.model_registry import ModelsUnavailableError
+
+        raise ModelsUnavailableError("no F-12 checkpoint at ml/checkpoints/absent")
+
+    with Session(engine) as session:
+        audit_id = _seed(session, tmp_path)
+
+    worker = AuditWorker(lambda: Session(engine), cannot_build)
+    with pytest.raises(Exception, match="no F-12 checkpoint"):
+        worker.run_once()
+
+    with Session(engine) as session:
+        audit = session.get(AuditRun, audit_id)
+        assert audit.status == STATUS_FAILED
+        assert "no F-12 checkpoint" in audit.failure_reason
+
+
+def test_marking_failed_does_not_overwrite_a_completed_audit(engine, tmp_path):
+    """Defensive: the bookkeeping write must never rewrite a terminal row."""
+    with Session(engine) as session:
+        audit_id = _seed(session, tmp_path)
+
+    worker = AuditWorker(
+        lambda: Session(engine), lambda session: build_pipeline(session, tmp_path)
+    )
+    assert worker.run_once() is True
+
+    worker._mark_failed(audit_id, RuntimeError("late and wrong"))
+    with Session(engine) as session:
+        audit = session.get(AuditRun, audit_id)
+        assert audit.status == STATUS_COMPLETED
+        assert audit.failure_reason is None
+
+
+def test_releasing_a_stuck_audit_only_touches_running_rows(engine, tmp_path):
+    """The one-off for rows stranded before the worker fix.
+
+    It must not disturb a queued audit waiting its turn, nor rewrite a
+    completed one.
+    """
+    from scripts.release_stuck_audits import release
+
+    with Session(engine) as session:
+        audit_id = _seed(session, tmp_path)
+        stuck = session.get(AuditRun, audit_id)
+        stuck.status = STATUS_RUNNING
+        stuck.claimed_at = datetime(2026, 11, 6, tzinfo=timezone.utc)
+
+        queued = AuditRun(
+            app_id=stuck.app_id,
+            snapshot_id=stuck.snapshot_id,
+            taxonomy_mapping_version_id=stuck.taxonomy_mapping_version_id,
+            classification_model_id=stuck.classification_model_id,
+            span_model_id=stuck.span_model_id,
+            alignment_model_id=stuck.alignment_model_id,
+            status=STATUS_QUEUED,
+            threshold_config={},
+        )
+        done = AuditRun(
+            app_id=stuck.app_id,
+            snapshot_id=stuck.snapshot_id,
+            taxonomy_mapping_version_id=stuck.taxonomy_mapping_version_id,
+            classification_model_id=stuck.classification_model_id,
+            span_model_id=stuck.span_model_id,
+            alignment_model_id=stuck.alignment_model_id,
+            status=STATUS_COMPLETED,
+            completed_at=datetime(2026, 11, 6, tzinfo=timezone.utc),
+            threshold_config={},
+        )
+        session.add_all([queued, done])
+        session.commit()
+        queued_id, done_id = queued.audit_id, done.audit_id
+
+    with Session(engine) as session:
+        assert release(session) == [audit_id]
+        session.commit()
+
+    with Session(engine) as session:
+        assert session.get(AuditRun, audit_id).status == STATUS_FAILED
+        assert "queue blocked" in session.get(AuditRun, audit_id).failure_reason
+        assert session.get(AuditRun, queued_id).status == STATUS_QUEUED
+        assert session.get(AuditRun, done_id).status == STATUS_COMPLETED
+        assert session.get(AuditRun, done_id).failure_reason is None
+
+
+def test_releasing_unblocks_the_queue(engine, tmp_path):
+    from scripts.release_stuck_audits import release
+
+    with Session(engine) as session:
+        _seed(session, tmp_path)
+        claimed = claim_next_audit(session)
+        session.commit()
+        assert claimed is not None
+        assert claim_next_audit(session) is None, "a running audit blocks the queue"
+
+        release(session)
+        session.commit()
+        # Nothing left queued here, but the blocker is gone: a new audit can
+        # now be claimed rather than being refused by the running row.
+        assert session.get(AuditRun, claimed.audit_id).status == STATUS_FAILED

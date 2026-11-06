@@ -2170,3 +2170,58 @@ False.
 exists for any application, so the declaration side is empty by fact rather
 than by finding. That is now the only thing standing between this system and
 a real audit.
+
+### C-85 The Spotify pilot audit stuck at `running`: two defects, not one
+
+**Root cause of the failure.** A corpus record stores its policy path
+relative to the **corpus** root — `raw/policies/<sha>.html` — which is right,
+because `CorpusPaths(root)` exists so a corpus can be moved and `--root` can
+point anywhere. `SnapshotRepository.load_policy_document` resolves a relative
+`policy_doc_path` against the **repository** root, which is also right,
+because that is what the pipeline is given at audit time.
+
+`record_collection_event` stored the record's string verbatim, so the
+snapshot row said `raw/policies/<sha>.html` and the worker looked in
+`<repo>/raw/policies/<sha>.html`, while the file sat under
+`<repo>/data/corpus/`. Two correct conventions, no conversion between them.
+
+Every stage before the worker reported success, which is why this surfaced
+only at audit time: `manual_collect` wrote a valid record, `validate_corpus`
+found the file — it tries the repository root and then falls back to the
+corpus root — and `import_corpus` imported cleanly. The tolerant validator
+is part of the story: it resolved a path the runtime could not.
+
+Fixed at the boundary where the two conventions meet.
+`SnapshotRepository` takes an optional `corpus_root`, set only by an
+importer, and converts once in `_snapshot_policy_path`. Records stay
+corpus-relative and relocatable; snapshot rows become repository-relative and
+resolvable. A corpus outside the repository is stored absolute rather than
+rewritten into a shorter path that would not resolve. With no `corpus_root`
+the value passes through unchanged, so every existing caller is untouched.
+
+**The second defect is the worse one.** The worker's unexpected-exception
+branch rolled back and re-raised. The claim had already been committed, so
+the row stayed `running` with no failure reason — and `claim_next_audit`
+returns nothing while *any* audit is running. One unexpected error therefore
+did not fail one audit: it **wedged the entire queue permanently**, with no
+record of why. That is what "stuck showing running" actually was.
+
+The worker now marks the audit failed on its own session before re-raising,
+because the session that raised has been rolled back and cannot be trusted to
+write. Building the pipeline also moved **inside** the `try`: it loads the
+models, and a checkpoint that will not load was stranding audits in exactly
+the same way. `_mark_failed` never rewrites a row that is already terminal,
+and if even the bookkeeping write fails it is logged and the original error
+still propagates — losing the real cause behind a bookkeeping error would be
+worse than an audit left running.
+
+**Verification.** The regression tests were run against the pre-fix code and
+three of the six fail there, so they are not passing vacuously. The real
+Spotify record now imports to
+`data/corpus/raw/policies/13089e7b…html` and its 196,635-byte policy loads
+with a matching hash.
+
+`scripts/release_stuck_audits.py` gives a terminal status to rows stranded
+before the fix. It only ever moves `running` to `failed`, touches no verdict
+or evidence, deletes nothing, and records why in `failure_reason` so the
+history keeps the run rather than losing it.

@@ -19,14 +19,18 @@ import logging
 import signal
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from app.config import get_settings
+from app.db.models import AuditRun
 from app.db.session import engine_or_none
 from app.services.audit_pipeline import (
     AuditFailedError,
     claim_next_audit,
 )
 from sqlalchemy.orm import Session
+
+from analysis.vocabulary import STATUS_COMPLETED, STATUS_FAILED
 
 logger = logging.getLogger("auditor.worker")
 
@@ -73,8 +77,11 @@ class AuditWorker:
             self.stats.claimed += 1
 
         with self._session_factory() as session:
-            pipeline = self._build_pipeline(session)
             try:
+                # Inside the try: building the pipeline loads the models, and
+                # a checkpoint that will not load must fail the audit rather
+                # than stranding it.
+                pipeline = self._build_pipeline(session)
                 outcome = pipeline.run(audit_id)
             except AuditFailedError as failure:
                 # The pipeline has already recorded status and reason on the
@@ -84,8 +91,15 @@ class AuditWorker:
                 self.stats.failed += 1
                 logger.warning("audit %s failed: %s", audit_id, failure)
                 return True
-            except Exception:
+            except Exception as unexpected:
+                # Every exit from here must leave the audit in a terminal
+                # state. The claim was committed before the work began, so a
+                # rollback alone leaves the row `running` for ever - and
+                # `claim_next_audit` returns nothing while any audit is
+                # running, so a single unexpected error would wedge the whole
+                # queue permanently rather than failing one audit.
                 session.rollback()
+                self._mark_failed(audit_id, unexpected)
                 self.stats.failed += 1
                 logger.exception("audit %s raised an unexpected error", audit_id)
                 raise
@@ -100,6 +114,34 @@ class AuditWorker:
                 " (fixture models)" if outcome.uses_fixture_models else "",
             )
             return True
+
+    def _mark_failed(self, audit_id: int, error: BaseException) -> None:
+        """Record a terminal failure on its own session.
+
+        A fresh session because the one that raised has been rolled back and
+        cannot be trusted to write. Best-effort: if even this fails the
+        exception is logged and the original error still propagates, because
+        losing the real cause behind a bookkeeping error would be worse than
+        an audit left running.
+        """
+        reason = (
+            f"the audit stopped with an unexpected {type(error).__name__}: "
+            f"{str(error).splitlines()[0][:400]}"
+        )
+        try:
+            with self._session_factory() as session:
+                audit = session.get(AuditRun, audit_id)
+                if audit is None or audit.status in (STATUS_COMPLETED, STATUS_FAILED):
+                    return
+                audit.status = STATUS_FAILED
+                audit.failure_reason = reason
+                audit.completed_at = datetime.now(timezone.utc)
+                session.commit()
+        except Exception:  # noqa: BLE001 - never mask the original failure
+            logger.exception(
+                "audit %s could not be marked failed; it may remain running",
+                audit_id,
+            )
 
     def run_forever(self) -> None:
         signal.signal(signal.SIGTERM, self.stop)

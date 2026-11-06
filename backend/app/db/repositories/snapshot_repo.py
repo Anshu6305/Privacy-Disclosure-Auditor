@@ -175,12 +175,55 @@ class SnapshotRepository:
     many applications and decides its own transaction boundary.
     """
 
-    def __init__(self, session: Session, policy_root: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        policy_root: Path | str | None = None,
+        corpus_root: Path | str | None = None,
+    ) -> None:
         self._session = session
-        #: Resolves relative ``policy_doc_path`` values. Corpus records store
-        #: repository-relative paths so a corpus stays portable between
-        #: machines.
+        #: Resolves relative ``policy_doc_path`` values when a document is
+        #: loaded. The repository root in every caller.
         self._policy_root = Path(policy_root) if policy_root is not None else Path(".")
+        #: Where a corpus record's own ``policy_path`` is relative to. Set by
+        #: an importer and by nothing else.
+        #:
+        #: A corpus record stores its policy path relative to the **corpus**
+        #: root, so a corpus stays relocatable: `CorpusPaths(root)` exists
+        #: precisely so ``--root`` can point anywhere. A snapshot row stores
+        #: it relative to the **repository** root, because that is what
+        #: `load_policy_document` resolves against at audit time.
+        #:
+        #: Those are not the same string, and storing the record's value
+        #: verbatim is what left the Spotify pilot audit stuck `running`: the
+        #: row said ``raw/policies/<sha>.html``, the worker looked for
+        #: ``<repo>/raw/policies/<sha>.html``, and the file was under
+        #: ``<repo>/data/corpus/``. The conversion happens once, here,
+        #: instead of leaving every reader to guess which root applies.
+        self._corpus_root = Path(corpus_root) if corpus_root is not None else None
+
+    def _snapshot_policy_path(self, record_path: str) -> str:
+        """Express a corpus record's policy path the way a snapshot stores it.
+
+        An absolute path passes through. A relative one is resolved against
+        the corpus root when there is one, then re-expressed relative to the
+        policy root so `load_policy_document` can find it. With no corpus
+        root the value passes through unchanged, so every existing caller
+        behaves exactly as it did.
+
+        A path that cannot be made relative to the policy root is stored
+        absolute rather than rewritten into something shorter that would not
+        resolve.
+        """
+        path = Path(record_path)
+        if path.is_absolute() or self._corpus_root is None:
+            return record_path
+
+        resolved = (self._corpus_root / path).resolve()
+        try:
+            return resolved.relative_to(Path(self._policy_root).resolve()).as_posix()
+        except ValueError:
+            return resolved.as_posix()
 
     # -- F-07: record the event and its provenance -------------------------
 
@@ -214,6 +257,11 @@ class SnapshotRepository:
             )
 
         has_policy_document = bool(record.policy_path and record.policy_sha256)
+        stored_policy_path = (
+            self._snapshot_policy_path(record.policy_path)
+            if has_policy_document
+            else None
+        )
 
         for previous in self._session.execute(
             select(DisclosureSnapshot).where(
@@ -229,7 +277,7 @@ class SnapshotRepository:
             source_url_listing=listing_url,
             source_url_policy=policy_url,
             retrieval_mode=self._retrieval_mode(record),
-            policy_doc_path=record.policy_path if has_policy_document else None,
+            policy_doc_path=stored_policy_path,
             policy_doc_sha256=record.policy_sha256 if has_policy_document else None,
             policy_doc_bytes=(
                 policy_provenance.content_bytes if policy_provenance else None

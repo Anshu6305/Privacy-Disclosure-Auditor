@@ -98,7 +98,12 @@ def main() -> int:
 
     with Session(engine) as session:
         applications = ApplicationRepository(session)
-        snapshots = SnapshotRepository(session, policy_root=ROOT)
+        # The corpus root is supplied so a record's corpus-relative
+        # policy path is converted once, here, into the
+        # repository-relative path the worker resolves at audit time.
+        snapshots = SnapshotRepository(
+            session, policy_root=ROOT, corpus_root=paths.root
+        )
 
         for _path, record in records:
             try:
