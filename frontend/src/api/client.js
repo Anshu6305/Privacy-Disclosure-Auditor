@@ -47,8 +47,33 @@ async function request(path, options = {}) {
   return body;
 }
 
+const encode = encodeURIComponent;
+
 export const api = {
   health: () => request('/api/health'),
   databaseHealth: () => request('/api/health/database'),
   scope: () => request('/api/meta/scope'),
+
+  // E1 to E11. One function per approved endpoint, named for the screen that
+  // uses it. No endpoint is invented here: every path below exists in
+  // backend/app/api/routes/audits.py.
+  searchApplications: (query) => request(`/api/applications?q=${encode(query)}`),
+  applicationDetail: (packageName) => request(`/api/applications/${encode(packageName)}`),
+  requestAudit: (packageName) =>
+    request('/api/audits', {
+      method: 'POST',
+      body: JSON.stringify({ package_name: packageName }),
+    }),
+  auditStatus: (auditId) => request(`/api/audits/${encode(auditId)}`),
+  auditReport: (auditId) => request(`/api/audits/${encode(auditId)}/report`),
+  categoryEvidence: (auditId, dsCategory) =>
+    request(`/api/audits/${encode(auditId)}/evidence/${encode(dsCategory)}`),
+  auditHistory: (packageName) =>
+    request(`/api/applications/${encode(packageName)}/audits`),
+  compareAudits: (earlierId, laterId) =>
+    request(`/api/audits/${encode(earlierId)}/compare/${encode(laterId)}`),
+  sourceLinks: (packageName) =>
+    request(`/api/applications/${encode(packageName)}/sources`),
+  versions: () => request('/api/versions'),
+  acquisitionStatus: () => request('/api/acquisition/status'),
 };

@@ -211,10 +211,10 @@ Milestone 1 except F-26 above.
 | F-21 | `analysis/verdict/absence_recorder.py` | M7 | Implemented and verified |
 | F-22 | `analysis/verdict/inconclusive_recorder.py` | M7 | Implemented and verified |
 | F-23 | `backend/app/api/routes/audits.py` (`audit_report`), `backend/app/api/schemas/audit.py` | M8 | Implemented — assembled in the E5 route, not in a separate `report_assembler.py` (C-68) |
-| F-24 | `frontend/src/pages/ReportPage.jsx` | M9 | Not implemented |
-| F-25 | `frontend/src/components/EvidencePanel.jsx` | M9 | Not implemented |
-| F-26 | `frontend/src/components/ScopeBanner.jsx` | M1, M9 | Partially implemented |
-| F-27 | `frontend/src/components/SourceLinks.jsx` | M9 | Not implemented |
+| F-24 | `frontend/src/pages/ReportPage.jsx` | M9 | Implemented and verified |
+| F-25 | `frontend/src/components/EvidencePanel.jsx` | M9 | Implemented and verified — the three record types render as three different things |
+| F-26 | `frontend/src/components/ScopeBanner.jsx` | M1, M9 | Implemented — on every screen, and restated on the report itself |
+| F-27 | `frontend/src/components/SourceLinks.jsx` | M9 | Implemented and verified — both source URLs and the policy SHA-256 |
 | F-28 | `backend/app/services/audit_service.py`, `backend/app/api/routes/audits.py` (E3) | M3B, M8 | Implemented |
 | F-29 | `backend/app/api/routes/audits.py` (`application_audits`, E7) | M8 | Implemented (C-68) |
 | F-30 | `backend/app/api/routes/audits.py` (`compare_audits`, E8) | M8 | Implemented (C-68) |
@@ -241,6 +241,26 @@ Every row is implemented in `backend/app/api/routes/audits.py` and covered by
 | E9 | `GET /api/applications/{package_name}/sources` | Both source URLs and the policy hash | Implemented and verified |
 | E10 | `GET /api/versions` | Model and mapping provenance (F-34) | Implemented and verified |
 | E11 | `GET /api/acquisition/status` | Live-retrieval configuration, never success | Implemented and verified |
+
+## Approved screens S1 to S7 (M9)
+
+No login, registration or administration screen exists, by design. Each row
+is covered by the test file named beside it.
+
+| Screen | Route | Endpoints | Tests | Status |
+| --- | --- | --- | --- | --- |
+| S1 search | `/` | E1 | `SearchPage.test.jsx` | Implemented and verified |
+| S2 application detail | `/applications/:packageName` | E2, E9, E3 | `ApplicationPage.test.jsx` | Implemented and verified |
+| S3 processing | `/audits/:auditId` | E4 | `AuditStatusPage.test.jsx` | Implemented and verified |
+| S4 results | `/audits/:auditId/report` | E5 | `ReportPage.test.jsx` | Implemented and verified |
+| S5 evidence detail | inside S4, per category | E6 | `ReportPage.test.jsx` | Implemented and verified |
+| S6 history | `/applications/:packageName/audits` | E7 | `HistoryPage.test.jsx` | Implemented and verified |
+| S7 comparison | `/applications/:packageName/compare` | E8 | `ComparePage.test.jsx` | Implemented and verified |
+| System (not an approved user screen) | `/system` | E10, E11 | `SystemPage.test.jsx` | Implemented and verified |
+
+S5 lives inside S4 rather than at its own URL: evidence is only interpretable
+beside the verdict it supports, and a standalone evidence page would show
+quotations with nothing to attach them to.
 
 ## Requirements FR-01 to FR-27, NFR-01 to NFR-19, GI-01 to GI-07
 

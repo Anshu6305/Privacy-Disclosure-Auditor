@@ -19,4 +19,14 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
   },
+  // Tests run in jsdom against a mocked `fetch`. Nothing here reaches a real
+  // API: a frontend test that depended on a live backend would pass or fail
+  // for reasons that have nothing to do with the component under test.
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.js'],
+    include: ['src/**/*.test.jsx'],
+    restoreMocks: true,
+  },
 });

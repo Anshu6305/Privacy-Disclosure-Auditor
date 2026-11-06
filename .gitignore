@@ -58,3 +58,7 @@ migration_verification_*.log
 # Generated F-12 span dataset
 data/processed/opp115_spans.jsonl
 ml/checkpoints/
+
+# Vitest rewrites vite.config.js to a temporary module on each run and cannot
+# always remove it afterwards. These are build scratch, never source.
+frontend/vite.config.js.timestamp-*

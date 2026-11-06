@@ -63,3 +63,165 @@ body {
   color: var(--muted);
   font-size: 0.8rem;
 }
+
+/* ---------------------------------------------------------------------------
+   M9 — the seven screens.
+
+   One column, generous line length, no framework. The palette already
+   declared above is reused rather than extended, except for the five verdict
+   hues and the fixture notice. Colour never carries meaning on its own: every
+   verdict, status and tag is also written out in words, which keeps the
+   interface readable for anyone who cannot distinguish them and keeps a
+   projector's washed-out colours from changing what a slide says.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --consistent: #1f6f43;
+  --declared-only: #9b2c2c;
+  --policy-only: #8a4b00;
+  --contradictory: #7b1d1d;
+  --undetermined: #4a5568;
+  --fixture-bg: #fff8e1;
+  --fixture-line: #e0c77a;
+}
+
+.app__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.app__nav { display: flex; gap: 1rem; font-size: 0.9rem; }
+.app__nav a { color: var(--muted); text-decoration: none; }
+.app__nav a:hover { text-decoration: underline; }
+.app__nav a.active { color: var(--ink); font-weight: 600; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+.card h2 { margin: 0 0 0.75rem; font-size: 1.05rem; }
+.card h3 { margin: 1.25rem 0 0.5rem; font-size: 0.95rem; }
+
+/* States ------------------------------------------------------------------ */
+.state { border-radius: 6px; padding: 0.85rem 1rem; margin: 0 0 1rem; font-size: 0.9rem; }
+.state--loading { background: var(--note); border: 1px solid var(--note-line); color: var(--muted); }
+.state--error { background: #fdecec; border: 1px solid #e3b0b0; color: var(--bad); }
+.state--empty { background: transparent; color: var(--muted); padding-left: 0; }
+.state--unavailable { background: var(--warn-bg); border: 1px solid #e3c08a; color: var(--warn); }
+.state p { margin: 0.4rem 0 0; }
+.state__hint { color: var(--muted); font-size: 0.85rem; }
+
+.fixture-notice {
+  background: var(--fixture-bg);
+  border: 1px solid var(--fixture-line);
+  border-left: 4px solid var(--fixture-line);
+  border-radius: 4px;
+  padding: 0.85rem 1rem;
+  font-size: 0.9rem;
+  margin: 0.75rem 0 0;
+}
+
+/* Search ------------------------------------------------------------------ */
+.search__label { display: block; font-size: 0.9rem; color: var(--muted); margin-bottom: 0.35rem; }
+.search__row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.search__row input { flex: 1 1 18rem; padding: 0.55rem 0.7rem; font-size: 1rem;
+  border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); }
+.search__hint { margin: 0.5rem 0 0; font-size: 0.85rem; color: var(--muted); }
+
+button, .button-link {
+  padding: 0.55rem 1rem; font-size: 0.95rem; font-family: inherit;
+  border: 1px solid var(--ink); border-radius: 4px;
+  background: var(--ink); color: #fff; cursor: pointer; text-decoration: none;
+  display: inline-block;
+}
+button:disabled { background: var(--muted); border-color: var(--muted); cursor: not-allowed; }
+button[type="button"].link-button {
+  background: none; border: none; color: #1a4f8a; padding: 0;
+  text-decoration: underline; font-size: 0.9rem;
+}
+
+.results { list-style: none; margin: 0; padding: 0; }
+.results li {
+  display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; align-items: baseline;
+  padding: 0.6rem 0; border-top: 1px solid var(--line);
+}
+.results li:first-child { border-top: none; }
+.results__package { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem; color: var(--muted); }
+.results__developer { font-size: 0.85rem; color: var(--muted); margin-left: auto; }
+
+/* Definition pairs -------------------------------------------------------- */
+.pairs { display: grid; grid-template-columns: minmax(8rem, 14rem) 1fr; gap: 0.5rem 1rem; margin: 0; }
+.pairs dt { color: var(--muted); font-size: 0.9rem; }
+.pairs dd { margin: 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+.hash { font-size: 0.78rem; overflow-wrap: anywhere; }
+.muted { color: var(--muted); }
+
+/* Tables ------------------------------------------------------------------ */
+.table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.table th, .table td { text-align: left; padding: 0.5rem 0.6rem; border-top: 1px solid var(--line); vertical-align: top; }
+.table thead th { border-top: none; border-bottom: 2px solid var(--line); color: var(--muted);
+  font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.table tbody th { font-weight: 600; }
+.table tr[data-changed="true"] th { color: var(--declared-only); }
+
+.verdict-cell { display: flex; flex-direction: column; gap: 0.2rem; }
+.verdict { font-weight: 600; }
+.verdict[data-verdict="consistent"] { color: var(--consistent); }
+.verdict[data-verdict="declared-only"] { color: var(--declared-only); }
+.verdict[data-verdict="policy-only"] { color: var(--policy-only); }
+.verdict[data-verdict="contradictory"] { color: var(--contradictory); }
+.verdict[data-verdict="undetermined"] { color: var(--undetermined); }
+.verdict__abstained { font-size: 0.75rem; color: var(--warn); }
+
+.audit-status { font-weight: 600; }
+.audit-status[data-status="completed"] { color: var(--consistent); }
+.audit-status[data-status="failed"] { color: var(--bad); }
+.audit-status[data-status="running"], .audit-status[data-status="queued"] { color: var(--warn); }
+
+.tag { font-size: 0.7rem; padding: 0.1rem 0.4rem; border-radius: 3px; margin-left: 0.4rem;
+  text-transform: uppercase; letter-spacing: 0.04em; }
+.tag--fixture { background: var(--fixture-bg); border: 1px solid var(--fixture-line); color: var(--warn); }
+
+.thresholds, .counts { list-style: none; margin: 0; padding: 0; font-size: 0.88rem; }
+.thresholds li { display: flex; gap: 0.5rem; }
+.thresholds__key { color: var(--muted); min-width: 7rem; }
+
+/* Evidence ---------------------------------------------------------------- */
+.row--evidence td { background: var(--page); }
+.evidence { list-style: none; margin: 0; padding: 0; }
+.evidence__item { padding: 0.6rem 0 0.6rem 0.8rem; border-left: 3px solid var(--line); margin-bottom: 0.6rem; }
+.evidence__item--evidence { border-left-color: var(--consistent); }
+.evidence__item--absence { border-left-color: var(--policy-only); }
+.evidence__item--inconclusive { border-left-color: var(--undetermined); }
+.evidence__label { margin: 0 0 0.35rem; font-size: 0.78rem; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--muted); }
+.evidence__quote { margin: 0; padding: 0.5rem 0.75rem; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 4px; font-size: 0.9rem; }
+.evidence__offsets { margin: 0.35rem 0 0; font-size: 0.78rem; color: var(--muted); }
+.evidence__reason { margin: 0.35rem 0 0; font-size: 0.88rem; }
+.evidence__none { margin: 0; font-size: 0.88rem; color: var(--muted); }
+
+.report__scope { margin: 0; font-size: 0.9rem; color: var(--muted); }
+.failure-reason { font-size: 0.92rem; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin: 1rem 0 0; }
+.actions label { font-size: 0.9rem; }
+
+/* Narrow screens ---------------------------------------------------------- */
+@media (max-width: 40rem) {
+  .app { padding: 1.25rem 0.85rem 2rem; }
+  .pairs { grid-template-columns: 1fr; gap: 0.15rem; }
+  .pairs dt { margin-top: 0.5rem; }
+  .table, .table thead, .table tbody, .table tr, .table th, .table td { display: block; }
+  .table thead { display: none; }
+  .table tr { border-top: 1px solid var(--line); padding: 0.5rem 0; }
+  .table th, .table td { border: none; padding: 0.15rem 0; }
+  .table tbody th { font-size: 0.95rem; }
+  .results__developer { margin-left: 0; }
+}

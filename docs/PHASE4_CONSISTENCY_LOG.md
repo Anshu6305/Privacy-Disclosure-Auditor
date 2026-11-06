@@ -1782,3 +1782,85 @@ PostgreSQL validated.
 and the model before touching Docker, and fails in two seconds naming both
 install commands. The previous run spent ninety seconds to end in four
 tracebacks whose real cause appeared only at the bottom of the fourth.
+
+### C-72 M8 verified on PostgreSQL 16
+
+Re-run of 2026-11-06 against `privacy_auditor_m8_20261106b_test` after
+installing spaCy 3.8.3 and `en_core_web_sm` on the host: **78 integration
+tests passed, zero skips at head**, the downgrade to baseline fired the
+revision guards as designed, and the re-upgrade restored both the head
+revision and the schema it describes.
+
+That closes everything C-71 left open. All six M8 PostgreSQL tests now pass
+under real constraints: the CHECK constraints a complete run depends on,
+`jsonb` threshold round-tripping, evidence offsets and non-ASCII quoted text
+through real `integer` and `text` columns, E5 assembling a report from
+PostgreSQL-validated rows, and `FOR UPDATE SKIP LOCKED`.
+
+The zero-skip result at head is the part worth keeping: every integration
+test was applicable to the fully migrated schema, so none of them passed
+vacuously.
+
+### C-73 M9 frontend: the interface declines where the backend declines
+
+The screens were built so that every refusal the backend makes survives the
+trip to the reader, because an interface that smooths them over undoes the
+three refusals M8 exists to enforce.
+
+**A fixture-backed report declares itself at the top of the report.** `E5`
+carries `uses_fixture_models`, and `FixtureNotice` turns it into a sentence
+stating that the verdicts demonstrate the pipeline and are not model
+predictions. The provenance table additionally tags each `fixture:`
+identifier. Two tests assert the notice appears when the flag is set and is
+absent when it is not, so a demonstration cannot come to resemble a finding
+by omission.
+
+**A failed audit shows the pipeline's own sentence, verbatim.** `S3` renders
+`failure_reason` rather than a generic "audit failed". The test uses the real
+F-15 message — `holds no rules (F-15)` — because that is the failure the
+project will actually hit, and a reader needs to see "nobody authored the
+mapping rules" rather than "something went wrong".
+
+**The three evidence record types render as three different things.** An
+`absence` record is a system statement that the policy says nothing; it
+carries no quote, and a test asserts no `blockquote` is produced for one.
+Rendering it as a quotation would attribute words to the policy that the
+policy does not contain — the inverse of the failure F-20 exists to prevent.
+
+**A Consistent verdict's empty evidence panel says why it is empty.** F-23
+withholds evidence for affirmative agreement, so the panel states that rather
+than looking broken.
+
+**Loading, error and empty are three states, never one.** `Async.jsx` exists
+because the common failure is a request failing and the screen rendering its
+empty layout, leaving the reader unable to tell "nothing found" from "nothing
+loaded". A search test asserts that a 500 produces an alert and *not* the
+no-match message.
+
+**All fourteen categories are listed, and all compared categories counted.**
+The report lists categories neither source mentions, and the comparison
+states how many of how many changed with unchanged rows one click away.
+Omitting either would leave "nothing to report" indistinguishable from "not
+examined".
+
+**Three-state `declares_no_data_collected` reaches the screen as three
+states.** Null renders as "Not read — the Data Safety section was never
+retrieved", never as an absent declaration.
+
+**One repository gap closed in passing.** `npm run lint` had existed since M1
+with no ESLint configuration to read, so it failed with a setup message
+rather than linting. A config was added; `src` is clean. `react/prop-types`
+is off deliberately: the props are described by the Pydantic schemas in
+`backend/app/api/schemas/audit.py`, and a hand-maintained second copy would
+drift from them silently.
+
+**Tests:** 32 Vitest tests across 7 files, all passing; `vite build`
+succeeds. Every response body in those tests is written out in full against
+the Pydantic schema rather than generated, and an unstubbed path throws, so a
+screen that calls an endpoint nobody stubbed fails loudly instead of
+rendering an empty layout that looks right.
+
+**Not covered by these tests:** no browser-level end-to-end run against a
+live API. Component tests mock `fetch`, which is the right boundary for them
+but means the proxy configuration, CORS and the production build served by
+FastAPI are exercised only by running the stack.
