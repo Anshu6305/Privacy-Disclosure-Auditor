@@ -90,12 +90,18 @@ type, its value and both offsets match. Overlapping scores print beside the
 exact ones so the boundary error rate is visible rather than hidden behind
 whichever definition flatters more.
 
-**Training has not happened.** `--dry-run` is verified; the GPU run is
+**Training has not happened.** `--dry-run` is verified, including against a
+freshly extracted bundle with the repository off `PYTHONPATH`; the GPU run is
 `notebooks/train_f12_colab.ipynb`, which unzips the bundle from
-`python ml/export_f12_bundle.py` (1.7 MB) and runs the repository's own
-trainer, so Colab uses the same split, seed and evaluation code as a local
-run rather than a copy that can drift. **No F-12 metric exists and none is
-reported.**
+`python ml/export_f12_bundle.py` (1.7 MB, 9 files) and runs the repository's
+own trainer, so Colab uses the same split, seed and evaluation code as a
+local run rather than a copy that can drift. **No F-12 metric exists and none
+is reported.**
+
+The bundle's contents are derived from the import graph, not listed by hand.
+The first version carried a hand-written list, omitted two modules and failed
+on Colab at the first import (C-78); six tests now check the bundle as a
+notebook sees it.
 
 ## 4. End-to-end integration
 

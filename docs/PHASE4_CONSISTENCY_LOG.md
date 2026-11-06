@@ -1955,3 +1955,41 @@ validation, 18 test policies. Every token was checked to slice out of its own
 segment before the dataset was accepted. 7 of the 54 non-O labels have fewer
 than 10 test spans and are reported as not measurable, which is the same
 rare-class limitation M5 recorded and is not fixed here.
+
+### C-78 The F-12 bundle shipped a hand-written module list, and it was wrong
+
+`ml/export_f12_bundle.py` carried `MODULES` as a literal tuple. It omitted
+`ml/data/opp115_spans.py`, which `span_training_data.py` imports directly,
+and `ml/data/opp115_dataset.py`, which `splits.py` reaches for `CATEGORIES`
+and `LabelledSegment`.
+
+The bundle built, reported its file count, uploaded and extracted without a
+complaint anywhere. It failed on Colab at the first import.
+
+**Nothing in the repository could have caught it.** Every module imports
+fine from a full checkout, so the local dry-run passed, the unit suite
+passed and ruff passed. The missing files were invisible precisely because
+they were present everywhere except in the one place that mattered.
+
+**Fixed at the cause, not the symptom.** `required_modules()` now walks the
+import graph from `ml/train_span_extractor.py` with `ast`, follows only the
+first-party roots, and carries every ancestor `__init__.py`. Adding an
+import to any bundled module now extends the bundle automatically. A list
+maintained by a person goes stale the first time someone adds an import; a
+closure does not. Same reasoning as the C-56/C-60/C-61/C-62 family, where
+hard-coded revision numbers kept breaking as the migration chain grew.
+
+**Six tests**, in `tests/unit/test_f12_bundle.py`. Four are static: the two
+previously-missing modules are named explicitly so the regression is legible,
+and one asserts the closure is closed under its own imports — the property
+the hand-written list violated, stated directly. Two extract a bundle into an
+empty directory and run it in a subprocess with the repository off
+`PYTHONPATH`, which is the only way to see what Colab sees.
+
+The extraction test was checked against a deliberately truncated bundle and
+reproduces the reported failure exactly — `ModuleNotFoundError: No module
+named 'ml.data.opp115_spans'` — so it is not passing vacuously.
+
+The approved split, seed and methodology are untouched: the freshly extracted
+bundle reports the same 2,466 segments, 55 labels and 80/17/18 policy split
+as a local run.
