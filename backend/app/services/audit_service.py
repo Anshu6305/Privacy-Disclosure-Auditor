@@ -34,6 +34,12 @@ from app.db.repositories.snapshot_repo import SnapshotRepository, SnapshotSummar
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from analysis.models.variant import (
+    MixedVariantError,
+    UnknownVariantError,
+    bind_variant,
+    normalise_variant,
+)
 from analysis.vocabulary import (
     MODEL_TASKS,
     SNAPSHOT_AUDITABLE,
@@ -51,6 +57,9 @@ REASON_POLICY_MISSING = "policy_missing"
 REASON_SOURCES_MISSING = "sources_missing"
 REASON_NO_TAXONOMY_MAPPING = "no_taxonomy_mapping"
 REASON_NO_MODEL = "no_model_for_task"
+REASON_UNKNOWN_VARIANT = "unknown_variant"
+REASON_VARIANT_UNAVAILABLE = "variant_unavailable"
+REASON_MIXED_VARIANT = "mixed_variant"
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +96,27 @@ class AuditService:
         self._applications = ApplicationRepository(session)
         self._snapshots = SnapshotRepository(session)
 
-    def request_audit(self, package_name: str) -> AuditRequested | AuditRequestRefused:
+    def request_audit(
+        self, package_name: str, variant: str | None = None
+    ) -> AuditRequested | AuditRequestRefused:
+        """F-13/F-34. ``variant`` is optional and internal (DD-8).
+
+        Omitted - every end-user request - the active version set is used.
+        Supplied by the Corpus Maintainer's command-line tooling, that
+        variant is bound for the whole audit and there is no fallback to
+        another one.
+        """
+        # Before any work: an unknown variant is refused here, not after the
+        # policy has been fetched and segmented.
+        try:
+            requested_variant = normalise_variant(variant)
+        except UnknownVariantError as unknown:
+            return AuditRequestRefused(
+                package_name=(package_name or "").strip(),
+                reason=REASON_UNKNOWN_VARIANT,
+                detail=str(unknown),
+            )
+
         application = self._applications.get_by_package(package_name)
         if application is None:
             return AuditRequestRefused(
@@ -135,13 +164,30 @@ class AuditService:
 
         models: dict[str, ModelVersion] = {}
         for task in MODEL_TASKS:
+            query = select(ModelVersion).where(
+                ModelVersion.task == task, ModelVersion.is_active.is_(True)
+            )
+            if requested_variant is not None:
+                query = query.where(ModelVersion.variant == requested_variant)
             model = self._session.execute(
-                select(ModelVersion)
-                .where(ModelVersion.task == task, ModelVersion.is_active.is_(True))
-                .order_by(desc(ModelVersion.model_version_id))
-                .limit(1)
+                query.order_by(desc(ModelVersion.model_version_id)).limit(1)
             ).scalar_one_or_none()
             if model is None:
+                if requested_variant is not None:
+                    # No fallback. Running the other variant would produce a
+                    # report whose provenance names a model that never ran,
+                    # which is exactly what a comparison must not do.
+                    return AuditRequestRefused(
+                        package_name=application.package_name,
+                        reason=REASON_VARIANT_UNAVAILABLE,
+                        detail=(
+                            f"No active {requested_variant!r} model version "
+                            f"for the {task!r} task. F-13 binds one variant "
+                            "for the whole audit and does not fall back to "
+                            "another, so the audit was not created."
+                        ),
+                        snapshot_status=snapshot.status,
+                    )
                 return AuditRequestRefused(
                     package_name=application.package_name,
                     reason=REASON_NO_MODEL,
@@ -153,6 +199,21 @@ class AuditService:
                     snapshot_status=snapshot.status,
                 )
             models[task] = model
+
+        # One variant for the whole audit. With none requested the active
+        # registrations decide, and they must agree.
+        # The variant itself needs no column: every model_version row
+        # carries one, and the three ids recorded below are the binding.
+        # This call is here for its refusal, not its return value.
+        try:
+            bind_variant(models, requested_variant)
+        except MixedVariantError as mixed:
+            return AuditRequestRefused(
+                package_name=application.package_name,
+                reason=REASON_MIXED_VARIANT,
+                detail=str(mixed),
+                snapshot_status=snapshot.status,
+            )
 
         settings = get_settings()
         # Pinned per run, because thresholds are tunable and a report means

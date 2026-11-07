@@ -45,9 +45,11 @@ class WorkerStats:
 class AuditWorker:
     """Claims one audit, runs it, commits, repeats.
 
-    ``build_pipeline`` is injected: it receives a session and returns an
-    :class:`AuditPipeline`. Injecting it keeps the loop testable without
-    models and makes the "no models, no worker" rule explicit at startup.
+    ``build_pipeline`` is injected: it receives a session and the audit id,
+    and returns an :class:`AuditPipeline` bound to that audit's recorded
+    model versions. Injecting it keeps the loop testable without models;
+    taking the audit id is F-13, which binds one variant per audit at claim
+    time and never switches it.
     """
 
     def __init__(self, session_factory, build_pipeline, poll_interval: float = 2.0):
@@ -81,7 +83,11 @@ class AuditWorker:
                 # Inside the try: building the pipeline loads the models, and
                 # a checkpoint that will not load must fail the audit rather
                 # than stranding it.
-                pipeline = self._build_pipeline(session)
+                # F-13: bound to the version set this audit recorded when
+                # it was requested, never re-resolved here. Passing the
+                # audit id is what makes "never switch variants during an
+                # audit" true rather than merely intended.
+                pipeline = self._build_pipeline(session, audit_id)
                 outcome = pipeline.run(audit_id)
             except AuditFailedError as failure:
                 # The pipeline has already recorded status and reason on the
@@ -169,10 +175,10 @@ def main() -> int:  # pragma: no cover - process entry point
         logger.error("no database configured; set POSTGRES_PASSWORD in .env")
         return 2
 
-    from app.services.model_registry import build_pipeline_factory
+    from app.services.model_registry import build_bound_pipeline_factory
 
     try:
-        factory = build_pipeline_factory()
+        factory = build_bound_pipeline_factory()
     except RuntimeError as exc:
         logger.error("%s", exc)
         return 2

@@ -173,11 +173,21 @@ def application_detail(
 def request_audit(
     payload: AuditRequestIn, session: Session = Depends(get_session)
 ) -> AuditAcceptedOut:
-    result = AuditService(session).request_audit(payload.package_name)
+    result = AuditService(session).request_audit(
+        payload.package_name, variant=payload.variant
+    )
     if not isinstance(result, AuditRequested):
         # 409: the application exists but its data cannot support a report.
         # 404 would say the application is unknown, which is a different fact.
-        status = 404 if result.reason == "unknown_application" else 409
+        # 404 only for an application nobody holds. A bad variant is a
+        # malformed request, and everything else is a real conflict with the
+        # stored data.
+        if result.reason == "unknown_application":
+            status = 404
+        elif result.reason == "unknown_variant":
+            status = 422
+        else:
+            status = 409
         raise HTTPException(
             status_code=status,
             detail={

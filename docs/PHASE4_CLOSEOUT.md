@@ -1,6 +1,6 @@
 # Phase 4 — Implementation Closeout
 
-**Date:** 2026-11-07 · **Scope:** Phase 4 (Coding and Implementation) only.
+**Date:** 2026-11-07 (F-13 added same day) · **Scope:** Phase 4 (Coding and Implementation) only.
 Phase 5, academic validation and testing, is a separate phase and has not
 started.
 
@@ -49,9 +49,14 @@ T1 to T9 and E1 to E11 onto code and tests, and
 `docs/IMPLEMENTATION_TRACEABILITY.md` is updated per milestone. Both are
 current. Two statements from them carry forward here:
 
-* **F-13 (variant selection) is the one approved design function not
-  implemented.** It presupposes two trained classifiers to choose between,
-  and the improved F-11 variant was never trained. See §8.
+* **F-13 (model variant binding) is implemented and verified** (C-88). The
+  approved FR-13/F-13/DD-8 text was recovered from the Phase 2 SRS and
+  Phase 3 SDD, which are not stored in this repository. One variant is
+  bound per audit, resolved through F-34, recorded as three
+  `model_version_id`s and bound at claim time from those ids; an unknown
+  variant is rejected before work begins and there is no fallback.
+  **FR-13's baseline-versus-improved comparison still cannot be run**,
+  because the improved classifier has no trained checkpoint. See §8.
 * **F-31 (gold-set evaluation) is blocked**: the gold set does not exist.
 
 `docs/PHASE4_CONSISTENCY_LOG.md` holds 87 numbered findings, C-01 to C-87,
@@ -65,7 +70,7 @@ Last full run, 2026-11-07:
 
 | Check | Result |
 | --- | --- |
-| Backend `pytest tests` | **735 passed, 78 skipped, 0 failed** |
+| Backend `pytest tests` | **756 passed, 78 skipped, 0 failed** (735 before F-13; 21 added) |
 | `ruff check .` | clean |
 | Frontend Vitest | 32 passed |
 | `npm run lint` / `vite build` | clean / succeeds |
@@ -112,8 +117,17 @@ ones whose verdicts the corrections in C-86 and C-87 changed.
   Consistent verdict may rest on a correspondence the rule table itself
   calls loose. That asymmetry is deliberate and recorded in C-87, with the
   measurement behind it.
-* **F-11's improved variant was never trained**, so no baseline/improved
-  comparison was made and F-13 has nothing to select between.
+* **F-11's improved variant has never been trained.** F-13 can bind it and
+  correctly refuses when it is absent, but the baseline-versus-improved
+  comparison FR-13 exists to enable has not been run. Training needs
+  `distilbert-base-uncased`, which cannot be downloaded in the development
+  environment; `ml/export_improved_bundle.py` prepares the Colab route F-12
+  used, verified by extracting the bundle and running the trainer's dry run
+  with the repository off the path.
+* **F-34's sequential model loading is not implemented.** It requires one
+  model per stage, released before the next; the pipeline holds all three
+  for a run and has since M8. Pre-existing, recorded in C-88, not a defect
+  introduced by F-13.
 * **F-10's analysability thresholds are provisional** — chosen by this
   project, not an approved requirement.
 * **Rare classes are not measurable**: Data Retention (n=7) and Do Not Track
@@ -142,11 +156,14 @@ this phase should be read as accuracy.
 
 ## 8. Remaining work genuinely belonging to Phase 4
 
-1. **F-13, variant selection — decide.** It is the one approved design
-   function not implemented, and it cannot be implemented without a trained
-   improved classifier. Either train that variant and implement F-13, or
-   record a formal deferral with the faculty. Leaving it undeclared is the
-   only outstanding item that affects whether Phase 4 is honestly closed.
+1. **Train the improved classifier.** F-13 is implemented; FR-13's purpose
+   — comparing the two models on the same input — is not yet achievable,
+   because one of the two models does not exist. Run
+   `python ml/export_improved_bundle.py`, train on Colab, and bring
+   `ml/checkpoints/improved_classifier` back. The frozen split, seed 20261105
+   and evaluation module are preserved in the bundle, so the result is
+   directly comparable to M5's 0.7489 / 0.7690. Until then, **FR-13 is
+   implemented but unsatisfied**, and that is the honest statement.
 2. **Two pilot audit reports are untracked** —
    `spotify_audit_5_report.json` and `spotify_audit_6_report.json`. Audit 6
    is the evidence §5 rests on. The team should decide whether to commit
@@ -159,10 +176,16 @@ limitations that are being reported rather than fixed.
 ## 9. Closure position
 
 **Phase 4 is implementation-complete.** Every approved endpoint, screen,
-database entity and design function is implemented and tested except F-13,
-and a real application has been audited end to end with real models.
+database entity and design function is now implemented and tested,
+including F-13, and a real application has been audited end to end with
+real models.
 
-**It is not closed until item 1 above is settled**, because an approved
-design function that is neither implemented nor formally deferred is not a
-limitation — it is an open question about scope. That is a decision for the
-team and the faculty, not one this document can make.
+**One requirement is implemented but unsatisfied.** FR-13 asks that the two
+classifier variants be comparable on the same input. The mechanism is built
+and tested; the improved model has never been trained, so the comparison
+has not been made. That is a missing artefact, not a missing function, and
+it is stated as such rather than counted as complete.
+
+Whether to close Phase 4 with FR-13 in that state, or to train the model
+first, is a decision for the team and the faculty. This document records
+the position; it does not make the call.

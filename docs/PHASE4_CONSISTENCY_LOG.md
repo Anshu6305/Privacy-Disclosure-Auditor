@@ -2381,3 +2381,78 @@ measurement above as its input.
 Full replay on the real record with the real models, all fourteen categories:
 Web browsing Undetermined (C-86), App activity Consistent, the other twelve
 unchanged from audit 4.
+
+### C-88 F-13 implemented; the binding gap was at claim time, not at request
+
+The approved specification was recovered from the Phase 2 SRS and Phase 3
+SDD, which are not stored in this repository — the reason an earlier search
+found only a single master-plan row. With FR-13 and F-13 in hand the work
+was unambiguous and no interpretation was invented.
+
+**What already existed.** F-34's resolution was in `request_audit`: the
+active mapping version, the active model version per task, the threshold
+configuration, all recorded on `audit_run`. Three model ids are NOT NULL
+columns in the frozen schema, so the version set is necessarily resolved
+when the audit is created.
+
+**What was missing, and it was the half that matters.** The worker ignored
+those ids entirely. `build_pipeline_factory` loaded three checkpoints from
+hard-coded default paths at startup, so an audit whose recorded provenance
+said `improved` would have run on the baseline and nothing anywhere would
+have said so. `model_version.checkpoint_path` was written by
+`scripts/register_models.py` and never read by anything.
+
+`build_bound_pipeline_factory` replaces it: the factory takes the audit id,
+reads that audit's three `model_version` rows, and loads exactly the
+artefacts they name. That is what makes "bind the variant when the worker
+claims the job" and "never switch variants during an audit" true rather
+than merely intended. `AuditWorker` passes the audit id; artefacts are
+cached per checkpoint path within a process.
+
+**Added at the request end:** `analysis/models/variant.py` with
+`normalise_variant` (an unknown variant raises before the application is
+even looked up, which is where F-13 requires the rejection) and
+`bind_variant` (one variant for the whole audit). Three refusal reasons
+join the existing set: `unknown_variant` (422), `variant_unavailable` and
+`mixed_variant` (409).
+
+**No fallback, anywhere.** A requested variant that is not active for all
+three tasks refuses the audit and names the task that lacked it. Partial
+availability is unavailability. Substituting the baseline would produce a
+report whose provenance says improved, and a comparison built on that would
+be comparing a model against itself with nobody aware of it.
+
+**One variant for the whole audit, also when none is requested.** If the
+active registrations span two variants there is no single variant to bind
+and no honest label for the result, so the audit is refused rather than run
+on a mixture nobody chose.
+
+**DD-8 honoured.** The variant is optional and internal on E3,
+`scripts/request_audit.py` is the maintainer's command-line path, and the
+frontend has no selector — it displays `model.variant` in two provenance
+tables and offers no way to choose one.
+
+**What was deliberately not changed.** `threshold_config` keeps only
+thresholds: recording the variant there would have broken
+`test_thresholds_are_recorded_and_flagged_provisional`, which is right that
+the column means what its name says. The variant needs no column — every
+`model_version` row carries one and the three recorded ids are the binding.
+
+**A pre-existing deviation from F-34, recorded not fixed.** F-34 requires
+loading one model per pipeline stage and releasing it before the next. The
+pipeline holds all three for the duration of a run and always has, since
+M8. Changing that is a rework of `AuditPipeline`'s constructor contract and
+its memory model, not an F-13 integration defect, so it is reported here
+rather than attempted in the final task.
+
+21 tests. Suite: 756 passed, 78 skipped.
+
+**FR-13 is not satisfied, and F-13 is not the reason.** The improved
+classifier has no trained checkpoint: `distilbert-base-uncased` cannot be
+downloaded in this environment. The binding machinery is complete and
+tested, including the refusal when the improved variant is asked for and
+absent, but the comparison FR-13 exists to enable cannot be run until the
+model is trained. `ml/export_improved_bundle.py` prepares the same Colab
+route F-12 took, and the bundle was verified by extracting it and running
+the trainer's dry run with the repository off the path: same frozen split,
+same seed 20261105, same evaluation module.

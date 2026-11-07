@@ -498,7 +498,7 @@ def test_the_worker_runs_one_audit_and_commits_it(engine, tmp_path):
         return Session(engine)
 
     worker = AuditWorker(
-        session_factory, lambda session: build_pipeline(session, tmp_path)
+        session_factory, lambda session, _audit_id: build_pipeline(session, tmp_path)
     )
     assert worker.run_once() is True
     assert worker.run_once() is False, "the queue is empty after one audit"
@@ -514,7 +514,7 @@ def test_the_worker_records_a_failed_audit_without_crashing(engine, tmp_path):
         _seed(session, tmp_path, html=UNANALYSABLE_HTML)
 
     worker = AuditWorker(
-        lambda: Session(engine), lambda session: build_pipeline(session, tmp_path)
+        lambda: Session(engine), lambda session, _audit_id: build_pipeline(session, tmp_path)
     )
     assert worker.run_once() is True
     assert worker.stats.failed == 1
@@ -533,7 +533,7 @@ def test_a_stopped_worker_still_finishes_the_audit_in_hand(engine, tmp_path):
         _seed(session, tmp_path)
 
     worker = AuditWorker(
-        lambda: Session(engine), lambda session: build_pipeline(session, tmp_path)
+        lambda: Session(engine), lambda session, _audit_id: build_pipeline(session, tmp_path)
     )
     worker.stop()
     assert worker.run_once() is True
@@ -759,7 +759,7 @@ def test_an_unexpected_error_leaves_the_audit_failed_not_running(engine, tmp_pat
 
     worker = AuditWorker(
         lambda: Session(engine),
-        lambda session: AuditPipeline(
+        lambda session, _audit_id: AuditPipeline(
             session,
             classifier=ExplodingClassifier(),
             aligner=StubAligner(),
@@ -790,7 +790,7 @@ def test_the_queue_is_not_wedged_by_an_unexpected_error(engine, tmp_path):
 
     broken = AuditWorker(
         lambda: Session(engine),
-        lambda session: AuditPipeline(
+        lambda session, _audit_id: AuditPipeline(
             session,
             classifier=ExplodingClassifier(),
             aligner=StubAligner(),
@@ -819,7 +819,7 @@ def test_the_queue_is_not_wedged_by_an_unexpected_error(engine, tmp_path):
         second_id = second.audit_id
 
     healthy = AuditWorker(
-        lambda: Session(engine), lambda session: build_pipeline(session, tmp_path)
+        lambda: Session(engine), lambda session, _audit_id: build_pipeline(session, tmp_path)
     )
     assert healthy.run_once() is True, "the queue was still blocked"
     with Session(engine) as session:
@@ -835,7 +835,7 @@ def test_a_model_that_will_not_load_fails_the_audit_rather_than_stranding_it(
     exactly as a mid-run crash did.
     """
 
-    def cannot_build(_session):
+    def cannot_build(_session, _audit_id):
         from app.services.model_registry import ModelsUnavailableError
 
         raise ModelsUnavailableError("no F-12 checkpoint at ml/checkpoints/absent")
@@ -859,7 +859,7 @@ def test_marking_failed_does_not_overwrite_a_completed_audit(engine, tmp_path):
         audit_id = _seed(session, tmp_path)
 
     worker = AuditWorker(
-        lambda: Session(engine), lambda session: build_pipeline(session, tmp_path)
+        lambda: Session(engine), lambda session, _audit_id: build_pipeline(session, tmp_path)
     )
     assert worker.run_once() is True
 

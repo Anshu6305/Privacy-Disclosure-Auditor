@@ -58,6 +58,12 @@ class UnknownApplicationOut(BaseModel):
 
 class AuditRequestIn(BaseModel):
     package_name: str = Field(min_length=1)
+    #: F-13/DD-8. Optional and **internal**: end-user requests omit it and
+    #: get the active version set. The Corpus Maintainer passes "baseline" or
+    #: "improved" through command-line tooling when running a comparison.
+    #: No model-variant selector belongs in the frontend, and none exists
+    #: there. An unknown value is refused before any work begins.
+    variant: str | None = Field(default=None)
 
 
 class AuditAcceptedOut(BaseModel):
