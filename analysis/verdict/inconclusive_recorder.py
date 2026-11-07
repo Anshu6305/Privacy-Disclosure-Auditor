@@ -57,7 +57,16 @@ def record_inconclusive(
                 continue
             seen_segments.add(segment.segment_id)
 
-        if judgement.candidate.abstained_upstream:
+        if judgement.rests_on_partial_mapping and not judgement.model_abstained:
+            # Checked before the threshold causes: this judgement may be
+            # perfectly confident, and saying it fell below a threshold
+            # would be untrue as well as unhelpful.
+            cause = (
+                "the policy passage reached this category through a partial "
+                "taxonomy mapping, so it is not established that the passage "
+                "and the declaration describe the same data practice"
+            )
+        elif judgement.candidate.abstained_upstream:
             cause = (
                 "the data practice extracted from the policy text was below the "
                 "confidence threshold"

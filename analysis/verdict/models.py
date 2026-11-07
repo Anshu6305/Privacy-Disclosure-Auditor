@@ -176,6 +176,19 @@ class AlignmentCandidate:
         return self.mapped_practice is not None and self.mapped_practice.abstained
 
     @property
+    def mapping_is_partial(self) -> bool:
+        """True when F-15 reached this category through a partial rule.
+
+        A partial rule is the authored table's own statement that the
+        correspondence is real but looser than one-to-one, either because the
+        OPP-115 value is broader than the Data Safety category or because it
+        spans more than one. `User online activities` is both: it maps
+        partially to App activity and to Web browsing, because the annotation
+        does not distinguish in-app actions from browsing.
+        """
+        return self.mapped_practice is not None and self.mapped_practice.is_partial
+
+    @property
     def segment(self) -> PolicySegmentRef | None:
         return None if self.mapped_practice is None else self.mapped_practice.segment
 
@@ -210,8 +223,34 @@ class AlignmentJudgement:
             raise ValueError(f"confidence {self.confidence} is not a probability")
 
     @property
+    def rests_on_partial_mapping(self) -> bool:
+        return self.candidate.mapping_is_partial
+
+    @property
     def abstained(self) -> bool:
-        return self.model_abstained or self.candidate.abstained_upstream
+        """Uncertain for any of three reasons, all of which travel together.
+
+        The third is about contradictions only. A Contradictory verdict says
+        the two sources disagree **about the same data practice**, and a
+        partial mapping is the rule table saying it is not certain the
+        passage is about that practice. Spotify's App activity was reported
+        Contradictory at 0.8341 on passages about account-data erasure and
+        optional messaging, which reached the category through the partial
+        `User online activities` rule: neither passage denies the declared
+        practice, and the aligner's confidence was in its own label, not in
+        the subject matching.
+
+        Support is deliberately not treated this way. A partial mapping is
+        still evidence that the policy *mentions* a category, which is what
+        In-policy-not-declared and Consistent rest on; it is only the claim
+        that the two sources **conflict** that needs the subjects to line up,
+        because that is the finding that accuses a developer of something.
+        """
+        return (
+            self.model_abstained
+            or self.candidate.abstained_upstream
+            or (self.label == ALIGN_CONTRADICTS and self.rests_on_partial_mapping)
+        )
 
     @property
     def ds_category(self) -> str:

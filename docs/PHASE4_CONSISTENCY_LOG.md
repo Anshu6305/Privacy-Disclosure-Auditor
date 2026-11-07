@@ -2327,3 +2327,57 @@ abstained, including where the verdict was decided by other, trusted
 judgements. That is why resolved verdicts such as Personal info and Device or
 other IDs carry it. It is a flag about the category's evidence, not about the
 verdict, and it behaves as specified.
+
+### C-87 A contradiction must be about the same data practice
+
+Audit 4 still reported **App activity: Contradictory** at 0.8341 on passages
+about account-data erasure and optional messaging. Neither denies the
+declared practice — app interactions, in-app search history, installed apps —
+and the aligner's 0.8341 was confidence in its own label, not in the subjects
+matching.
+
+**The signal was already in the repository and unread.** Both passages
+reached App activity through F-15's *partial* rule for `User online
+activities`, which the authored table marks partial precisely because that
+value does not distinguish in-app actions from browsing. A partial mapping is
+the rule table's own statement that it is not established the passage is
+about this practice — which is exactly the question a Contradictory verdict
+turns on. C-86 recorded that `is_partial` was authored, carried and stored
+with nothing reading it; this is what reading it is for.
+
+A CONTRADICTS judgement resting on a partial mapping now abstains, so ALG-8
+step 3 returns Undetermined with an inconclusive record. The record names the
+partial mapping as the cause and does **not** claim a confidence threshold
+was missed, because 0.8341 cleared it comfortably and saying otherwise would
+be untrue.
+
+No threshold was changed. ALG-8 is untouched and all five verdicts remain
+reachable, each asserted by a test: an explicit denial through an exact
+mapping is still Contradictory, and one exact denial still outweighs any
+number of partial ones so a genuine contradiction cannot be buried by
+ambiguous company.
+
+**Support is deliberately left decisive, and the asymmetry is a choice.**
+Consistent and In-policy-not-declared claim only that the policy *mentions* a
+category; only the finding that the two sources **conflict** needs the
+subjects to line up, because only that one accuses a developer of something.
+
+**What this costs, measured rather than assumed.** On the real Spotify audit,
+App activity moves from Contradictory to **Consistent (0.7629)**, not to
+Undetermined — because five decisive SUPPORTS remain. Every one of App
+activity's judgements is partial: 30 CONTRADICTS (now none decisive), 30
+SUPPORTS (5 still decisive), 880 NO_MATCH. So that Consistent rests entirely
+on the same loose correspondence the contradictions did.
+
+That is worth stating plainly: a false Consistent is a clean bill of health
+the evidence does not support, and in a privacy audit that is its own harm.
+Making partial support abstain as well would have pushed nearly every
+category on this corpus to Undetermined — on these numbers, all of App
+activity — which would make the system silent rather than careful. The
+narrow change is the one the correction asked for; whether support should
+also require an exact mapping is a design decision for the team, with the
+measurement above as its input.
+
+Full replay on the real record with the real models, all fourteen categories:
+Web browsing Undetermined (C-86), App activity Consistent, the other twelve
+unchanged from audit 4.
