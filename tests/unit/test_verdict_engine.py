@@ -294,15 +294,26 @@ def test_every_category_receives_a_verdict():
 
 
 def test_categories_are_independent():
+    """Location is declared here so the contradiction is a real one.
+
+    It was `with_declaration=False`, which made this test assert that an
+    undeclared category can come out Contradictory - the defect that
+    reported Spotify's Web browsing as a disagreement with a declaration
+    that never mentioned it. Independence is what this test is for, so it
+    now declares Location and leaves the undeclared case to
+    `test_a_contradiction_needs_a_declaration_to_contradict`.
+    """
     results = assign_verdicts(
-        declaration={"Personal info": declared("Personal info")},
+        declaration={
+            "Personal info": declared("Personal info"),
+            "Location": declared("Location"),
+        },
         judgements_by_category={
             "Location": [
                 judgement(
                     "CONTRADICTS",
                     NEVER_LOCATION,
                     ds_category="Location",
-                    with_declaration=False,
                 )
             ]
         },

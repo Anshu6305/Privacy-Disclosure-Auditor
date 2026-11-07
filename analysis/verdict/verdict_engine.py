@@ -128,7 +128,16 @@ def assign_category_verdict(
     if supports:
         if declared:
             # Both sources assert the practice: affirmative agreement. A
-            # Consistent verdict carries no evidence record (F-23).
+            # Consistent verdict carries no evidence record - the approved
+            # decision table records this outcome as "-none-". (The rule
+            # belongs to F-20, evidence selection; this comment cited F-23,
+            # which is report assembly.)
+            #
+            # It is why Spotify's Personal info and Device or other IDs show
+            # found_in_policy true with no quote. A reader cannot check an
+            # agreement the report does not show them, which is a real
+            # reporting gap - but changing it is a design decision for the
+            # team, not an implementation defect to fix here.
             return CategoryVerdict(
                 ds_category=ds_category,
                 verdict=VERDICT_CONSISTENT,
@@ -163,6 +172,18 @@ def assign_category_verdict(
             # confident, but it is not what left the question open, and
             # reporting it here would overstate how close the system came to
             # an answer.
+            #
+            # NOTE: "sub-threshold" describes the judgement set, not the
+            # number. A judgement that abstained because the practice
+            # underneath it was sub-threshold still carries the aligner's own
+            # confidence, which can be near 1.0 - Spotify's Location reported
+            # 0.9924 on an Undetermined verdict. That is the figure the
+            # system computed and the inconclusive record states why it is
+            # not trusted, but the two meanings share one float and a reader
+            # cannot tell them apart. Recorded as a reporting ambiguity for
+            # the team rather than changed here, because
+            # `test_undetermined_from_upstream_abstention_reports_that_confidence`
+            # settles the current reading deliberately.
             confidence=_deciding_confidence(abstentions),
             records=record_inconclusive(abstentions, declared=declared),
         )

@@ -232,7 +232,27 @@ class AlignmentJudgement:
 
     @property
     def is_decisive_contradiction(self) -> bool:
-        return not self.abstained and self.label == ALIGN_CONTRADICTS
+        """A contradiction needs a declaration to contradict.
+
+        CONTRADICTS means the policy says the opposite of the Data Safety
+        claim. Where the declaration makes no claim for this category, there
+        is no opposite: `build_pair` still probes the policy with "This app
+        collects X" so a trusted SUPPORTS can reach In-policy-not-declared,
+        but that probe is a question put to the policy, not a statement the
+        developer made. A CONTRADICTS against it means the policy denies a
+        practice the declaration never asserted, and the two sources agree.
+
+        Treating it as decisive reported Spotify's Web browsing as
+        Contradictory on a declaration that never mentioned Web browsing.
+        ALG-8 step 1 is unchanged and still acts on any trusted
+        contradiction; what changed is that a probe of an undeclared
+        category no longer counts as one.
+        """
+        return (
+            not self.abstained
+            and self.label == ALIGN_CONTRADICTS
+            and self.candidate.declared_item is not None
+        )
 
     @property
     def is_decisive_no_match(self) -> bool:

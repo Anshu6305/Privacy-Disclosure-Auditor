@@ -2225,3 +2225,105 @@ with a matching hash.
 before the fix. It only ever moves `running` to `failed`, touches no verdict
 or evidence, deletes nothing, and records why in `failure_reason` so the
 history keeps the run rather than losing it.
+
+### C-86 Spotify audit 2 traced: one verdict defect, two model-quality findings, one design gap
+
+Audit 2 is preserved as historical evidence. Nothing in it was edited.
+
+**1. Web browsing reported Contradictory against a declaration that never
+mentioned it. CONFIRMED DEFECT, fixed.**
+
+The chain, traced end to end:
+
+* F-12 predicted the data type `User online activities` for three passages
+  about messaging, device sensor data, and sharing with other Spotify users;
+* F-15 maps that value to **both** App activity and Web browsing, correctly
+  and as two partial rules, because the OPP-115 value does not distinguish
+  in-app activity from browsing;
+* Web browsing is **not** in Spotify's declaration, so `build_pair` found no
+  declared item and built the hypothesis "This app collects Web browsing."
+  anyway, with `collected=True`;
+* the NLI contradicted that sentence at 0.9711, and ALG-8 step 1 read the
+  result as the two sources disagreeing.
+
+No part of the declaration was ever involved. `build_hypothesis` documents
+that the hypothesis "says what the declaration says", and for an undeclared
+category the declaration says nothing: the probe is a question put to the
+policy so a trusted SUPPORTS can reach In-policy-not-declared, not a
+statement the developer made. A CONTRADICTS against it means the policy
+denies a practice the declaration never asserted, which is agreement.
+
+Fixed in `AlignmentJudgement.is_decisive_contradiction`, which now requires a
+declared item. **ALG-8 is untouched** and step 1 still fires on any trusted
+contradiction; what changed is that a probe of an undeclared category is no
+longer one. In-policy-not-declared remains reachable, which a test asserts —
+removing the probe instead would have made one of the project's two findings
+impossible to reach.
+
+Replayed on the real Spotify record with the real models: Web browsing
+becomes **Undetermined** with `found_in_policy` false, and the other thirteen
+categories are unchanged.
+
+**2. App activity Contradictory with both sources present. NOT a logic
+defect.**
+
+Spotify declares App activity — all 19 declared entries carry
+`collected: true`, three also `shared: true` — so the hypothesis was "This
+app collects App activity." and step 1 fired legitimately. The verdict is
+correct *given its inputs*; the inputs are wrong. The two quoted passages are
+about account erasure and messaging, and reached App activity the same way
+Web browsing's did: F-12 predicted `User online activities`, F-15 mapped it
+partially, and zero-shot F-18 returned CONTRADICTS at 0.8341 on a premise
+that does not address the claim.
+
+That is model quality, not logic: F-12's exact-match F1 is 0.1072 and F-18 is
+zero-shot and never fine-tuned. Both numbers are registered against the
+audit. No code change would make this verdict right without fabricating one.
+
+**Worth the team's attention:** both wrong verdicts arrived through
+**partial** mappings of one ambiguous OPP-115 value. `is_partial` is authored
+in the rule table, carried on `MappedPolicyPractice` and stored on
+`taxonomy_mapping_entry`, and **nothing downstream reads it** — a mapping the
+rule table marks as a loose correspondence produces a verdict exactly as
+decisive as an exact one. Consuming it is a change to verdict semantics and
+therefore a design decision, recorded here rather than made quietly.
+
+**3. Consistent with `found_in_policy` true and no evidence. Approved
+design, not a defect.**
+
+The approved decision table records this outcome with record "-none-": an
+affirmative agreement is not quoted. That is why Personal info and Device or
+other IDs show no passage. The engine's comment cited **F-23**, which is
+report assembly; the rule belongs to F-20. Citation corrected.
+
+A reader cannot check an agreement the report does not show them. That is a
+real reporting gap and it is the team's to decide, not an implementation
+defect to fix here.
+
+**4. Confidence and abstention. Traced; no defect confirmed.**
+
+`verdict.confidence` is **the aligner's confidence in its own label**, taken
+from the judgement that decided the verdict. For Undetermined it is the
+maximum over the abstained judgements.
+
+A judgement abstains when `model_abstained OR candidate.abstained_upstream`.
+Location's 0.9924 and Financial info's 0.9001 are cases of the second: the
+aligner was that sure of its label, while the extracted practice underneath
+it was below the classifier threshold. The 0.0000 values are judgements with
+no premise at all, which are recorded NO_MATCH with zero confidence and
+`model_abstained` true because the model was never consulted.
+
+So "Undetermined, confidence 0.9924" reads as near-certainty on a verdict
+that is an admission of uncertainty. The engine's docstring calls this "the
+highest sub-threshold confidence", where "sub-threshold" describes the
+judgement set rather than the number.
+`test_undetermined_from_upstream_abstention_reports_that_confidence` settles
+that reading deliberately, so it was **not** changed here: one float carries
+two meanings and the fix is to report them apart, which is a reporting
+decision. Recorded, with a note in the engine at the point of use.
+
+`abstention_involved` is true whenever **any** judgement in the category
+abstained, including where the verdict was decided by other, trusted
+judgements. That is why resolved verdicts such as Personal info and Device or
+other IDs carry it. It is a flag about the category's evidence, not about the
+verdict, and it behaves as specified.
