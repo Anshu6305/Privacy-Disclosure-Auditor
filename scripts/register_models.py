@@ -56,6 +56,7 @@ from analysis.vocabulary import (  # noqa: E402
     TASK_CLASSIFICATION,
     TASK_SPAN_EXTRACTION,
     VARIANT_BASELINE,
+    VARIANT_IMPROVED,
 )
 
 FIXTURE_PREFIX = "fixture:"
@@ -88,6 +89,12 @@ def _load_classifier():
     from app.services.model_registry import load_baseline_classifier
 
     return load_baseline_classifier()
+
+
+def _load_improved_classifier():
+    from app.services.model_registry import load_improved_classifier
+
+    return load_improved_classifier()
 
 
 def _load_span_extractor():
@@ -130,6 +137,48 @@ def registrations() -> list[Registration]:
                 "split_seed": 20261105,
                 "label_rule": "majority vote, at least 2 of 3 annotators",
                 "decision_threshold": 0.5,
+            },
+            random_seed=20261105,
+            evaluated_items=541,
+        ),
+        Registration(
+            task=TASK_CLASSIFICATION,
+            variant=VARIANT_IMPROVED,
+            version_label="f11-improved-v1",
+            model_identifier="distilbert-base-uncased/improved_classifier",
+            checkpoint_path="ml/checkpoints/improved_classifier",
+            notes=(
+                "F-11 improved variant: distilbert-base-uncased fine-tuned as "
+                "a multi-label classifier over the ten OPP-115 categories. "
+                "Trained on a Colab Tesla T4 for 3 epochs (mean loss 0.3331, "
+                "0.1823, 0.1170), on the same policy-grouped split and seed "
+                "20261105 as the M5 baseline, so the two are comparable. "
+                "Held-out test macro-F1 0.6304, micro-F1 0.7775 (precision "
+                "0.8231, recall 0.7367), Hamming loss 0.0482, subset accuracy "
+                "0.6765 over 541 segments. "
+                "NOT uniformly better than the M5 baseline: micro-F1 (0.7775 "
+                "vs 0.7690), precision, Hamming loss and subset accuracy "
+                "improve, but macro-F1 falls (0.6304 vs 0.7489). The model "
+                "never predicts Data Retention (n=7) or Do Not Track (n=4) at "
+                "the 0.5 threshold, so both score 0.0 and drag the unweighted "
+                "mean down; neither category has enough test examples to be a "
+                "reliable measurement in either model. User Access, Edit and "
+                "Deletion also regresses (F1 0.538 vs 0.774). "
+                "The 0.5 threshold is provisional and was not tuned."
+            ),
+            loader=_load_improved_classifier,
+            metrics_path=ROOT / "ml/runs/improved-classifier-v1-metrics.json",
+            training_config={
+                "algorithm": "distilbert-base-uncased, multi-label fine-tune",
+                "split": "by source policy",
+                "split_seed": 20261105,
+                "label_rule": "majority vote, at least 2 of 3 annotators",
+                "decision_threshold": 0.5,
+                "epochs": 3,
+                "batch_size": 16,
+                "learning_rate": 3e-5,
+                "max_sequence_length": 256,
+                "training_device": "cuda (Tesla T4, Google Colab)",
             },
             random_seed=20261105,
             evaluated_items=541,
@@ -242,7 +291,11 @@ def metric_rows(registration: Registration) -> list[dict]:
     rows: list[dict] = []
 
     if registration.task == TASK_CLASSIFICATION:
-        test = document.get("test", {})
+        # `ml/train_baseline_classifier.py` writes {train, validation, test};
+        # `ml/train_improved_classifier.py` writes {validation_metrics,
+        # test_metrics}. Reading only one spelling would register a model with
+        # no metrics at all and report it as having none.
+        test = document.get("test") or document.get("test_metrics") or {}
         for name in (
             "macro_f1",
             "micro_f1",

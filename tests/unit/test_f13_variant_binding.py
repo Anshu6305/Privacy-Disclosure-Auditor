@@ -26,6 +26,7 @@ from app.services.audit_service import (
     REASON_MIXED_VARIANT,
     REASON_UNKNOWN_VARIANT,
     REASON_VARIANT_UNAVAILABLE,
+    REASON_VERSION_NOT_FOUND,
     AuditRequested,
     AuditRequestRefused,
     AuditService,
@@ -42,6 +43,9 @@ from analysis.models.variant import (
 from analysis.vocabulary import (
     MODEL_TASKS,
     SNAPSHOT_COMPLETE,
+    TASK_ALIGNMENT,
+    TASK_CLASSIFICATION,
+    TASK_SPAN_EXTRACTION,
     VARIANT_BASELINE,
     VARIANT_IMPROVED,
 )
@@ -374,3 +378,162 @@ def test_the_improved_classifier_refuses_rather_than_using_the_baseline(
         load_for_model_version(model, tmp_path)
     assert "has not been trained" in str(raised.value)
     assert "NOT substituted" in str(raised.value)
+
+
+# -- composed version sets --------------------------------------------------
+#
+# The variant axis belongs to the classifier. F-11 has a baseline and an
+# improved model; F-12 and F-18 each have exactly one, so no `improved` row
+# exists for span extraction or alignment and `variant="improved"` can never
+# resolve all three tasks. These tests pin the pilot registry's real shape and
+# both of its outcomes: a composed set runs, and an unavailable variant is
+# still refused.
+
+
+def register_pilot(session):
+    """The registry as `scripts/register_models.py` actually writes it."""
+    rows = [
+        (TASK_CLASSIFICATION, VARIANT_BASELINE, "m5-baseline-v1"),
+        (TASK_CLASSIFICATION, VARIANT_IMPROVED, "f11-improved-v1"),
+        (TASK_SPAN_EXTRACTION, VARIANT_BASELINE, "f12-span-extractor-v1"),
+        (TASK_ALIGNMENT, VARIANT_BASELINE, "f18-zeroshot-nli-v1"),
+    ]
+    for task, variant, label in rows:
+        session.add(
+            ModelVersion(
+                task=task,
+                variant=variant,
+                model_identifier=f"real/{label}",
+                version_label=label,
+                checkpoint_path=f"ml/checkpoints/{label}",
+                is_active=True,
+            )
+        )
+    session.flush()
+    return {label: label for _, _, label in rows}
+
+
+PILOT_SET = {
+    TASK_CLASSIFICATION: "f11-improved-v1",
+    TASK_SPAN_EXTRACTION: "f12-span-extractor-v1",
+    TASK_ALIGNMENT: "f18-zeroshot-nli-v1",
+}
+
+
+def test_an_unavailable_variant_is_still_refused(session, ready):
+    """The rule this blocker came from, pinned. `improved` is registered for
+    classification only, so the request is refused and names the task that
+    lacked it. No fallback to the baseline."""
+    register_pilot(session)
+
+    result = AuditService(session).request_audit(PACKAGE, variant=VARIANT_IMPROVED)
+
+    assert isinstance(result, AuditRequestRefused)
+    assert result.reason == REASON_VARIANT_UNAVAILABLE
+    assert "span_extraction" in result.detail
+    assert session.execute(select(AuditRun)).scalars().all() == []
+
+
+def test_a_composed_set_resolves_every_task(session, ready):
+    """The improved classifier running with the only span extractor and the
+    only aligner there are."""
+    register_pilot(session)
+
+    result = AuditService(session).request_audit(PACKAGE, version_labels=PILOT_SET)
+
+    assert isinstance(result, AuditRequested)
+    audit = session.get(AuditRun, result.audit_id)
+    recorded = {
+        TASK_CLASSIFICATION: audit.classification_model_id,
+        TASK_SPAN_EXTRACTION: audit.span_model_id,
+        TASK_ALIGNMENT: audit.alignment_model_id,
+    }
+    for task, model_id in recorded.items():
+        model = session.get(ModelVersion, model_id)
+        assert model is not None, f"{task} was not recorded"
+        assert model.task == task
+        assert model.version_label == PILOT_SET[task]
+
+
+def test_a_composed_set_records_each_model_s_own_variant(session, ready):
+    """Nothing is relabelled. The span extractor and the aligner stay
+    baseline, which is what they are."""
+    register_pilot(session)
+
+    result = AuditService(session).request_audit(PACKAGE, version_labels=PILOT_SET)
+    audit = session.get(AuditRun, result.audit_id)
+
+    assert session.get(ModelVersion, audit.classification_model_id).variant == (
+        VARIANT_IMPROVED
+    )
+    assert session.get(ModelVersion, audit.span_model_id).variant == VARIANT_BASELINE
+    assert (
+        session.get(ModelVersion, audit.alignment_model_id).variant == VARIANT_BASELINE
+    )
+
+
+def test_a_composed_set_must_name_every_task(session, ready):
+    """No implicit defaulting: an audit records the model that produced every
+    judgement, so a half-stated set is refused rather than completed."""
+    register_pilot(session)
+    partial = {task: PILOT_SET[task] for task in (TASK_CLASSIFICATION,)}
+
+    result = AuditService(session).request_audit(PACKAGE, version_labels=partial)
+
+    assert isinstance(result, AuditRequestRefused)
+    assert result.reason == REASON_VERSION_NOT_FOUND
+    assert "span_extraction" in result.detail
+    assert session.execute(select(AuditRun)).scalars().all() == []
+
+
+def test_a_version_label_that_does_not_exist_is_refused(session, ready):
+    register_pilot(session)
+    bogus = {**PILOT_SET, TASK_SPAN_EXTRACTION: "f12-span-extractor-v9"}
+
+    result = AuditService(session).request_audit(PACKAGE, version_labels=bogus)
+
+    assert isinstance(result, AuditRequestRefused)
+    assert result.reason == REASON_VERSION_NOT_FOUND
+    assert "f12-span-extractor-v9" in result.detail
+    assert session.execute(select(AuditRun)).scalars().all() == []
+
+
+def test_an_inactive_version_cannot_be_composed(session, ready):
+    """Composition states which model to run, not whether a retired one may
+    be revived."""
+    register_pilot(session)
+    retired = session.execute(
+        select(ModelVersion).where(
+            ModelVersion.version_label == "f18-zeroshot-nli-v1"
+        )
+    ).scalar_one()
+    retired.is_active = False
+    session.flush()
+
+    result = AuditService(session).request_audit(PACKAGE, version_labels=PILOT_SET)
+
+    assert isinstance(result, AuditRequestRefused)
+    assert result.reason == REASON_VERSION_NOT_FOUND
+    assert "alignment" in result.detail
+
+
+def test_a_version_label_from_the_wrong_task_is_refused(session, ready):
+    """The label is unique per task, so naming the classifier's label for the
+    span task must not resolve."""
+    register_pilot(session)
+    crossed = {**PILOT_SET, TASK_SPAN_EXTRACTION: "f11-improved-v1"}
+
+    result = AuditService(session).request_audit(PACKAGE, version_labels=crossed)
+
+    assert isinstance(result, AuditRequestRefused)
+    assert result.reason == REASON_VERSION_NOT_FOUND
+
+
+def test_a_variant_and_a_composed_set_together_is_a_caller_error(session, ready):
+    """E3 exposes only the variant, so no API request can reach this."""
+    register_pilot(session)
+
+    with pytest.raises(ValueError, match="not both"):
+        AuditService(session).request_audit(
+            PACKAGE, variant=VARIANT_IMPROVED, version_labels=PILOT_SET
+        )

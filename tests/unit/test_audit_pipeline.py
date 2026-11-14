@@ -381,6 +381,52 @@ def test_an_undeclared_category_found_in_the_policy_is_quoted_verbatim(
             assert "location" in record.quoted_text.lower()
 
 
+def test_an_undetermined_verdict_keeps_the_candidate_text_it_abstained_on(
+    engine, tmp_path
+):
+    """F-22 requires an inconclusive record to store the sub-threshold
+    candidate text, and the approved record-type table gives that type
+    verbatim policy text. Persistence nulled the quote for every record type
+    but `evidence`, so an Undetermined verdict reached the API with offsets
+    but no words and a reviewer could not read the passage that caused the
+    abstention. Found by auditing the real Spotify policy, where all sixteen
+    inconclusive records came back with quoted_text NULL.
+    """
+    from analysis.vocabulary import RECORD_INCONCLUSIVE, VERDICT_UNDETERMINED
+
+    with Session(engine) as session:
+        audit_id = _seed(session, tmp_path)
+        # Every practice below the gate, so nothing is decisive and ALG-8
+        # step 3 returns Undetermined.
+        build_pipeline(
+            session, tmp_path, classifier=StubClassifier(high=0.20, low=0.20)
+        ).run(audit_id)
+        session.commit()
+
+        location = session.scalars(
+            select(Verdict).where(Verdict.ds_category == "Location")
+        ).one()
+        assert location.verdict_value == VERDICT_UNDETERMINED
+
+        records = session.scalars(
+            select(EvidenceRecord).where(
+                EvidenceRecord.record_type == RECORD_INCONCLUSIVE
+            )
+        ).all()
+        assert records, "an Undetermined verdict must say why it abstained"
+
+        anchored = [r for r in records if r.segment_id is not None]
+        assert anchored, "at least one abstention here names its segment"
+        for record in anchored:
+            segment = session.get(PolicySegment, record.segment_id)
+            assert record.quoted_text == segment.segment_text, (
+                "the candidate text must survive persistence"
+            )
+            assert record.char_start == segment.char_start
+            assert record.char_end == segment.char_end
+            assert record.reason, "an abstention still has to state its cause"
+
+
 def test_a_low_confidence_practice_is_kept_and_flagged_not_discarded(engine, tmp_path):
     """The gate flags; it does not delete. Dropping the row would erase the
     uncertainty the verdict engine needs."""

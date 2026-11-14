@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from analysis.alignment.nli import NliPrediction
+from analysis.models.improved_classifier import ImprovedClassifierConfig
 from analysis.models.span_extractor import TaggedToken
 
 #: An NLI-pretrained encoder, used zero-shot for F-18 (decision D-01, Option
@@ -35,6 +36,22 @@ LOCAL_NLI_CHECKPOINT = Path("ml/checkpoints/nli-mnli-v1")
 #: `id2label` rather than assumed, because a mismatch would silently swap
 #: entailment and contradiction — turning SUPPORTS into CONTRADICTS.
 EXPECTED_NLI_LABELS = {"entailment", "neutral", "contradiction"}
+
+
+def model_inputs(model, encoded) -> dict:
+    """Keep only the tokenizer outputs this model's `forward` accepts.
+
+    `distilbert-base-uncased` ships a tokenizer config that declares
+    `BertTokenizer`, so a checkpoint saved from it loads as `BertTokenizerFast`
+    and emits `token_type_ids`. DistilBERT's `forward` has no such parameter and
+    raises ``TypeError: forward() got an unexpected keyword argument
+    'token_type_ids'``. Filtering against the real signature keeps one backend
+    working across encoder families instead of hard-coding one family's inputs.
+    """
+    import inspect
+
+    accepted = inspect.signature(model.forward).parameters
+    return {key: value for key, value in encoded.items() if key in accepted}
 
 
 def resolve_nli_label_indices(id2label: dict) -> dict[str, int]:
@@ -159,6 +176,12 @@ class TransformersClassifierBackend:
         )
         self._model.eval()
         self.batch_size = batch_size
+        # Tokenise exactly as the training and evaluation runs did, from one
+        # source of truth. Dynamic padding would be mathematically equivalent
+        # given the attention mask, but the probabilities this backend serves
+        # are the ones the reported metrics describe, so the settings should
+        # not be able to drift apart.
+        self.max_length = ImprovedClassifierConfig().max_sequence_length
 
     def predict_proba(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
@@ -168,10 +191,14 @@ class TransformersClassifierBackend:
         for start in range(0, len(texts), self.batch_size):
             batch = list(texts[start : start + self.batch_size])
             encoded = self._tokenizer(
-                batch, padding=True, truncation=True, max_length=256, return_tensors="pt"
+                batch,
+                padding="max_length",
+                truncation=True,
+                max_length=self.max_length,
+                return_tensors="pt",
             )
             with torch.no_grad():
-                logits = self._model(**encoded).logits
+                logits = self._model(**model_inputs(self._model, encoded)).logits
             # Sigmoid, not softmax: the task is multi-label, so a segment can
             # describe several practices at once.
             for row in torch.sigmoid(logits):

@@ -10,7 +10,11 @@
  *   absence       a system-generated statement that the policy says nothing.
  *                 It carries no quote, and rendering it as one would attribute
  *                 words to the policy that the policy does not contain.
- *   inconclusive  the system was not confident enough to decide.
+ *   inconclusive  the system was not confident enough to decide. F-22 stores
+ *                 the sub-threshold candidate passage with it where there is
+ *                 one, so the passage is shown under the "Not decided" label
+ *                 with the reason beneath it. It is an abstention, never a
+ *                 weak inconsistency, and the label and reason say so.
  *
  * A category with no records is not an error: a Consistent verdict carries no
  * evidence record by design (F-23), and the panel says so rather than looking
@@ -64,7 +68,7 @@ export default function EvidencePanel({ auditId, dsCategory, verdict }) {
         >
           <p className="evidence__label">{INTRO[record.record_type] ?? record.record_type}</p>
 
-          {record.record_type === 'evidence' && record.quoted_text ? (
+          {record.record_type !== 'absence' && record.quoted_text ? (
             <>
               <blockquote className="evidence__quote">{record.quoted_text}</blockquote>
               <p className="evidence__offsets">

@@ -2456,3 +2456,364 @@ model is trained. `ml/export_improved_bundle.py` prepares the same Colab
 route F-12 took, and the bundle was verified by extracting it and running
 the trainer's dry run with the repository off the path: same frozen split,
 same seed 20261105, same evaluation module.
+
+### C-89 The improved classifier's prediction contract did not match the evaluator
+
+The improved variant trained successfully on a Colab T4 (three epochs, mean
+loss 0.3331, 0.1823, 0.1170) and saved its checkpoint, then died in the
+evaluator with `AttributeError: 'tuple' object has no attribute 'get'`.
+
+Two faults in one line. `ml/evaluation.evaluate` consumes
+`list[dict[str, float]]` and reads `row.get(category, 0.0)`; the trainer's
+inner `predict` was annotated `list[tuple[str, ...]]` and returned the
+category *names* that survived `>= config.decision_threshold`. So the type
+was wrong, and the threshold was applied inside prediction — which would
+have made the evaluator's own `threshold` argument inert even had the types
+matched, and silently fixed the operating point at whatever value the
+trainer happened to hold.
+
+`predict_scores` now returns one dictionary per example mapping every
+configured category to its sigmoid probability, which is the contract the M5
+baseline's `predict_scores` already satisfied. One evaluator scoring both
+models is what makes the comparison a comparison of models rather than of two
+measurement paths. The row-keying is extracted into the pure
+`scores_from_probabilities`, so the piece that was broken is testable without
+torch, a GPU or a checkpoint.
+
+`evaluate_checkpoint` was added for the case this defect created: weights
+that exist but have never been scored. It loads an existing checkpoint,
+scores validation and then test exactly once, and writes nothing into the
+checkpoint directory — a training run's `metadata.json` is the record of how
+those weights were produced, and an evaluation is a separate event. Metrics
+are written only after both reports exist. `--evaluate-only` is a flag on the
+existing entry point rather than a second script, so the split and the
+configuration are built by the same lines in both modes and an evaluation run
+cannot score a different split from the one the weights were fitted on.
+
+### C-90 The improved checkpoint could not be loaded by the application at all
+
+`distilbert-base-uncased` ships a tokenizer configuration declaring
+`BertTokenizer`, so the saved improved checkpoint loads as `BertTokenizerFast`
+and emits `token_type_ids`. `DistilBertForSequenceClassification.forward` has
+no such parameter. `TransformersClassifierBackend.predict_proba` passed every
+tokenizer output straight through, so the first real inference through
+`model_registry` raised `TypeError: forward() got an unexpected keyword
+argument 'token_type_ids'`.
+
+Found by loading the restored checkpoint through the application's own loader
+chain rather than by reading the code. `model_inputs` now filters the encoded
+batch against the model's real `forward` signature, which keeps one backend
+working across encoder families instead of hard-coding one family's inputs.
+The span and NLI checkpoints declare `DistilBertTokenizer` and
+`RobertaTokenizer` and were never affected; their call sites are unchanged and
+the same latent risk remains there if a checkpoint is ever re-saved.
+
+The backend also tokenised with `padding=True, max_length=256` while training
+and evaluation used `padding="max_length"` and
+`config.max_sequence_length`. Equivalent given the attention mask, but the
+probabilities the API serves are the ones the reported metrics describe, so
+the setting now comes from `ImprovedClassifierConfig` and cannot drift. With
+both corrections the application path and the evaluation path return
+bit-identical probabilities (maximum absolute difference 0.000e+00 over a
+controlled set).
+
+### C-91 Undetermined verdicts reached the API with offsets but no words
+
+F-22's recorder sets `quoted_text` from the abstaining segment, and says why:
+"a reviewer following up needs the policy's words and not a description of
+them." The approved record-type table in `PHASE4_DECISION_TABLE.md` gives
+`inconclusive` "sub-threshold candidate text", and
+`ck_record_inconclusive_has_reason` requires only a reason, so a quote is
+permitted. `_persist_verdicts` nulled `quoted_text` for every record type but
+`evidence`, so the text was built and then thrown away one layer later.
+
+Found by auditing the real Spotify policy with the improved variant: all
+sixteen inconclusive records came back with `quoted_text` NULL while carrying
+a segment id and character offsets. An `absence` record still carries no
+quote — its text is system-generated and
+`ck_record_absence_has_no_quote` enforces that.
+
+The frontend's `EvidencePanel` showed a quotation only for `evidence`, which
+was correct while inconclusive records had none. It now shows the passage
+under the existing "Not decided" label with the abstention reason beneath it,
+so the passage cannot be read as a finding. Both fixes were confirmed
+non-vacuous by reverting each and watching its test fail.
+
+### C-92 Registering the improved model would have stored no metrics
+
+`metric_rows` read `document["test"]`, the shape
+`ml/train_baseline_classifier.py` writes. `ml/train_improved_classifier.py`
+writes `{validation_metrics, test_metrics}`, so registering the improved model
+would have produced a `model_version` row with zero `evaluation_metric` rows
+and reported it as having none — the same silent-emptiness failure as C-74 and
+C-78. It now reads whichever spelling the real file uses, giving six overall
+and thirty per-category rows.
+
+The improved classifier is now registered as `f11-improved-v1`
+(`classification`, `improved`), with a public `load_improved_classifier`
+mirroring the baseline loader. Its notes record that it is **not uniformly
+better** than M5: micro-F1 0.7775 against 0.7690, precision, Hamming loss and
+subset accuracy all improve, but macro-F1 falls to 0.6304 from 0.7489 because
+the model never predicts Data Retention (n=7) or Do Not Track (n=4) at the 0.5
+threshold, and User Access, Edit and Deletion regresses to F1 0.538 from
+0.774. Neither rare category has enough test examples to be a reliable
+measurement in either model.
+
+### C-93 `--variant improved` cannot resolve: the variant axis belongs to the classifier
+
+`request_audit.py com.spotify.music --variant improved --apply` refused with
+`variant_unavailable`: no active `improved` model version for
+`span_extraction`.
+
+**The refusal is correct and was left alone.** The cause is not a registry
+gap. F-11 has two models — M5's TF-IDF baseline and the fine-tuned encoder —
+which is the axis FR-13's comparison is about. F-12 has exactly one span
+extractor, and F-18's approved model under D-01 Option A is the zero-shot
+NLI aligner, whose improvement would be a fine-tune on 300–500 labelled
+pairs that do not exist. The master plan names "the improved classifier, the
+span extractor and the NLI aligner": the adjective attaches to the
+classifier alone. So no `improved` row exists for two of the three tasks,
+`variant="improved"` can never satisfy all three, and F-13's "partial
+availability is unavailability" rule makes that path permanently unreachable.
+
+Three things were ruled out. Registering the existing span extractor or
+aligner under `variant="improved"` would assert in the registry that an
+improved model exists where none does. Relaxing F-13 to apply the variant to
+the classifier only would change an approved rule on the evidence of a
+document this repository does not hold. Falling back to the baseline for the
+other two tasks would produce a report whose provenance named a model that
+never ran — the one outcome C-88 exists to prevent.
+
+**What the schema already supports.** `audit_run` has three independent
+`model_version_id` columns and **no variant column**; C-88 recorded that
+"the variant needs no column — every `model_version` row carries one and the
+three recorded ids are the binding." A set of three models from different
+variants is therefore already representable and already reportable: the
+provenance tables show each model's own variant. What was missing was a way
+to *request* one.
+
+`request_audit(..., version_labels=...)` and `--model task=version_label`
+add that, and nothing else. Every task must be named, the named version must
+exist and be active for that task, and a label from another task does not
+resolve — so nothing is substituted, defaulted or relabelled. `bind_variant`
+is not called for a composed set, because a composed set is not a variant
+request; the variant path and its refusal are byte-identical to before.
+`variant` and `version_labels` together is a caller error, not a refusal:
+E3 exposes only `variant`, so no API request can reach it, and the frontend
+still has no selector.
+
+Verified against the pilot registry's real shape: `--variant improved` still
+refuses and names `span_extraction`; the composed set resolves to
+`f11-improved-v1` (improved), `f12-span-extractor-v1` (baseline) and
+`f18-zeroshot-nli-v1` (baseline), each keeping its own variant and model
+identifier. 8 tests added, 29 in the F-13 module.
+
+**Left for the team to settle against the Phase 2 SRS.** Whether F-13's
+single-variant rule was approved as spanning all three tasks or only the
+classifier. Composition is correct either way, which is why it was chosen
+over editing the rule; if the SRS says the variant is the classifier's
+alone, the variant path could later be narrowed and `--model` would remain
+the explicit form.
+
+### C-94 The request CLI printed a field the result does not have
+
+`request_audit.py` line 137 printed `result.status`. `AuditRequested` has nine
+fields and no `status`: the audit is created `queued` and the apply or
+rollback line already says what became of it. A successful resolution
+therefore ended in `AttributeError` at the first line of output.
+
+**Nothing was persisted, and this was verified rather than reasoned.** The
+exception is raised before the `if arguments.apply:` branch, so neither
+`commit()` nor `rollback()` runs and the `Session` context manager closes
+without committing. Reproduced against a throwaway SQLite database with the
+pilot's registry shape: the same traceback at the same line, and
+`audit_run` still empty afterwards. The pilot PostgreSQL database was not
+reached from this session and must be confirmed there by the team.
+
+The fix is the one line: the id and the package name, both real fields. No
+status is invented and no audit semantics changed.
+
+`tests/unit/test_request_audit_cli.py` drives `main()` end to end against
+SQLite — dry run creates nothing, `--apply` commits exactly one `queued` row
+— plus a structural guard that reads every `result.<attr>` out of the script
+source and asserts each is a field of `AuditRequested`, so the next typo
+fails a test instead of reaching an operator as a traceback. All four fail
+against the pre-fix line.
+
+### C-95 The worker image had no compiler, and spaCy 3.8.3 has no Linux wheel
+
+`docker compose build worker` failed at `pip install -r backend/requirements.txt`
+with "Failed building wheel for spacy", compiling
+`spacy.matcher.levenshtein` with no `gcc` present.
+
+The comment above the apt layer said: "No compiler is installed, because the
+binary wheel is pinned in requirements.txt." That is true of `psycopg[binary]`
+and false of spaCy. spaCy is pinned at **3.8.3**, whose PyPI release carries
+21 files — macOS wheels, x86_64 manylinux wheels and the sdist — and **no
+aarch64 Linux wheel at all**. On the team's arm64 Mac, Docker builds
+`linux/arm64`, pip falls back to the sdist, and the C extension has to be
+compiled. Confirmed two ways: the PyPI release index for 3.8.3 lists zero
+aarch64 Linux wheels, and spaCy 3.8.3 installed in this session's aarch64
+Linux VM carries `Tag: cp310-cp310-linux_aarch64` with
+`Generator: setuptools`, which is a locally built wheel and not a downloaded
+one. Later spaCy releases do publish aarch64 wheels; the pin predates them,
+and the pin was not changed.
+
+`build-essential` is now installed in the existing apt layer, before the pip
+layer. The ML dependency set stays out, as the image intends.
+
+**A second gap, found while checking what the container would do once it
+started.** The image never installed `en_core_web_sm`. requirements.txt names
+it only in a comment, pip does not install it, and `load_sentencizer` raises
+`SegmenterUnavailableError` without it, so F-09 would have failed on every
+audit the container claimed. `python -m spacy download en_core_web_sm` (~12 MB)
+was added after the requirements layer.
+
+**A third gap, reported and deliberately not fixed.** The image excludes
+`backend/requirements-ml.txt` by design, so it has no torch or transformers.
+`build_bound_pipeline_factory` loads checkpoints when an audit is claimed, not
+at startup, so the worker starts and connects to PostgreSQL and then raises
+`ImportError` from `_require_transformers` on the first audit; the loop's
+handler marks that audit terminal and the worker stays up. A worker running
+from this image can therefore claim an audit but cannot complete one.
+Installing 2 GB into the API image was out of scope for this fix, so the
+audit has to be run by a worker process that has the ML set.
+
+**Not verified here.** Docker Desktop runs on the team Mac and is not
+reachable from an agent session, so the image was not built and no container
+was started. `tests/unit/test_worker_image.py` asserts the build contract
+from the Dockerfile text — compiler before the requirements layer, model
+after it, ML set still absent — and is not a substitute for a build.
+
+### C-96 The worker polled a different database from the one holding the audits
+
+Audit 9 was created in `privacy_auditor_pilot` and stayed `queued` while a
+worker started from `backend/` logged `worker started; one audit at a time`
+and claimed nothing.
+
+**Two defaults, one host, different databases.** The worker builds its URL
+from `Settings.database_url`, so it uses `.env`, which sets
+`POSTGRES_DB=privacy_auditor`. `scripts/request_audit.py` defaults to
+`--database privacy_auditor_pilot` and `compose_url` takes the settings URL
+and replaces the database name. Both resolve `localhost:5432`; only the
+database differs. The worker was polling an empty `audit_run` table in
+`privacy_auditor` the whole time.
+
+Host and database as resolved by each (credentials never printed):
+
+| Process | Resolves to |
+|---|---|
+| `app.worker.worker` | `localhost:5432/privacy_auditor` |
+| `scripts/request_audit.py` (default) | `localhost:5432/privacy_auditor_pilot` |
+
+**The claim logic is correct and was not touched.** `claim_next_audit`
+refuses while any audit is `running` (DD-2), then takes the oldest `queued`
+row ordered by `requested_at, audit_id`, with `FOR UPDATE SKIP LOCKED` on
+PostgreSQL, and sets `running` with `claimed_at`. It would have claimed audit
+9 had it been connected to the database holding it.
+
+**The fix is the startup line, not the queue.** The worker now logs the host
+and database it is polling and how many audits are queued there, so a
+misdirected worker is visible in its first line instead of looking like an
+idle one; it warns explicitly when the queue is empty that the audit may be
+in another database; it warns when a `running` row is already blocking the
+queue under DD-2, which is the only other way an idle-looking worker arises;
+and an unreachable database now exits 2, which is what the compose file
+already documented. `describe_target` reads only host, port and database off
+the parsed URL, so the password is never rendered.
+
+No default was changed. The scripts deliberately point at the pilot database
+and the application deliberately follows `.env`; making either silently
+follow the other would move the surprise rather than remove it. The operator
+selects the database, and the worker now says which one it got.
+
+7 tests. Suite: 807 passed, 78 skipped.
+
+**Not run here.** Restarting the worker against `privacy_auditor_pilot` and
+watching audit 9 reach a terminal status needs the team Mac: the pilot
+database is published on that host's loopback only and is not reachable from
+an agent session.
+
+### C-97 The model root was the working directory, not the checkout
+
+Audit 9 was claimed and then failed with "the improved classifier checkpoint
+is not at ml/checkpoints/improved_classifier". The checkpoint was present the
+whole time: five files at `ml/checkpoints/improved_classifier`, including a
+267 MB `model.safetensors`, restored on 10 November. Nothing was missing and
+nothing was mis-extracted; the downloaded zip was not involved.
+
+`model_version.checkpoint_path` is stored relative so the checkout can move,
+and `load_for_model_version(model, repository_root=".")` resolved it against
+**the process's working directory**. `AuditWorker`'s `main()` calls
+`build_bound_pipeline_factory()` with no argument, so a worker started from
+`backend/` looked for `backend/ml/checkpoints/improved_classifier`. The
+reported path was relative, which is why the message read as though the
+checkpoint were absent rather than as though the root were wrong.
+
+The default is now `DEFAULT_REPOSITORY_ROOT = PROJECT_ROOT`, derived from
+`app/config.py`'s own location, so it is the same absolute path from any cwd
+and resolves to `/app` inside the image, where the checkpoints are mounted.
+All three factories took the same `"."` default and all three are corrected;
+callers that pass a root explicitly, which is every fixture-based test, are
+unaffected.
+
+This also fixes a second resolution that had not yet been reached: the
+pipeline resolves `policy_doc_path` against the same root (C-85), so a worker
+started from `backend/` would have failed to load the stored policy
+immediately after the models loaded.
+
+Verified by loading the improved classifier through
+`load_for_model_version` with no root argument from `/tmp`:
+`ImprovedPracticeClassifier`, 10 categories, and real inference ("We collect
+your email address and share it with advertisers." → Third Party
+Sharing/Collection 0.6790, predicted).
+
+5 tests. Suite: 812 passed, 78 skipped. Two of the five fail against the
+pre-fix default.
+
+**Audit 9 is not recovered by this.** The worker had already marked it
+terminal, and `claim_next_audit` takes only `queued` rows.
+`scripts/release_stuck_audits.py` moves `running` to `failed` and nothing
+else, so there is no existing mechanism that returns a `failed` audit to the
+queue - the instruction to use one rested on a mechanism that does not exist.
+`ck_audit_failed_has_reason` would permit a requeue that keeps the reason,
+but turning a terminal status back into a queued one changes audit semantics,
+and this project has preserved audits unaltered as historical evidence
+throughout (C-86, closeout §5).
+
+**Decision: audit 9 is retained as it stands and a fresh audit is created.**
+Audit 9 is a truthful record of a run that genuinely failed, and its failure
+reason names the cause; rewriting it to `queued` would erase the only
+evidence that this defect reached PostgreSQL. The replacement carries
+identical provenance - the same snapshot, the same taxonomy mapping version
+and the same three `model_version` ids - so the comparison it produces is the
+one audit 9 was requested for. No existing row is altered and no requeue
+mechanism was added.
+
+### C-98 Audit 11 failed on code that was already fixed on disk
+
+Audit 11 was requested after C-97 and failed with the same message as audit
+9: the improved checkpoint not found at `ml/checkpoints/improved_classifier`.
+
+The fix was present in the file and the process did not have it. Python
+imports a module once; the worker had been started before C-96 and C-97 and
+was still running the old `model_registry` with its `"."` default. The
+evidence was already in the worker's own output: it logged
+`worker started; one audit at a time` with no `polling ...` line above it,
+and that line only exists in post-C-96 code.
+
+Nothing was wrong with the fix, so nothing was changed. The production path
+was verified instead, from the worker's own launch conditions: cwd
+`backend/`, `PYTHONPATH="..:$PWD"`, `build_bound_pipeline_factory()` called
+with no argument, then `factory(session, audit_id)`.
+`DEFAULT_REPOSITORY_ROOT` resolved to the checkout, all three registered
+checkpoint paths resolved to absolute project-root directories holding
+weights, the bound pipeline built with `ImprovedPracticeClassifier` and
+`ZeroShotAligner`, and the classifier returned real scores for a controlled
+sentence. 12 targeted tests passed; no code changed.
+
+Audits 9 and 11 are retained unaltered. They are the record that this defect
+reached PostgreSQL, and audit 11 additionally records that a stale worker
+process is indistinguishable from stale code unless the process says what it
+loaded - which is why the startup line was added rather than only the path
+default being corrected.

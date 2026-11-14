@@ -152,6 +152,58 @@ describe('F-24 report', () => {
 });
 
 describe('F-25 evidence records', () => {
+  it('shows the passage an inconclusive record abstained on', async () => {
+    // F-22 stores the sub-threshold candidate passage with an inconclusive
+    // record. The panel showed a quotation only for `evidence`, so an
+    // Undetermined verdict displayed a reason with no passage and a reviewer
+    // could not see what the system could not decide about.
+    mockApi({
+      '/api/audits/42/evidence/Location': {
+        body: [
+          {
+            record_type: 'inconclusive',
+            display_order: 1,
+            quoted_text: 'We may collect location in some circumstances.',
+            char_start: 12,
+            char_end: 57,
+            reason: 'This is an abstention, not a finding of inconsistency.',
+            segment_id: 7,
+          },
+        ],
+      },
+      '/api/audits/42/report': {
+        body: report({
+          verdicts: [
+            {
+              ds_category: 'Location',
+              verdict: 'Undetermined',
+              confidence: 0.31,
+              declared: true,
+              found_in_policy: false,
+              abstention_involved: true,
+              evidence: [],
+            },
+          ],
+        }),
+      },
+    });
+    renderAt(<ReportPage />, {
+      path: '/audits/:auditId/report',
+      route: '/audits/42/report',
+    });
+
+    await userEvent.click(await screen.findByRole('button', { name: /show evidence/i }));
+
+    const quote = await screen.findByText(
+      'We may collect location in some circumstances.',
+    );
+    expect(quote.tagName).toBe('BLOCKQUOTE');
+    expect(screen.getByText('Not decided')).toBeInTheDocument();
+    expect(
+      screen.getByText(/abstention, not a finding of inconsistency/),
+    ).toBeInTheDocument();
+  });
+
   it('renders an absence record without a quotation', async () => {
     // An absence record is a system statement that the policy says nothing.
     // Rendering it as a quote would attribute words to the policy that the

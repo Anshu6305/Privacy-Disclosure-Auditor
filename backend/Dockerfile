@@ -23,15 +23,31 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# libpq is needed by psycopg. No compiler is installed, because the binary
-# wheel is pinned in requirements.txt.
+# libpq5 is the runtime library psycopg needs; its binary wheel is pinned, so
+# no libpq-dev and no compiler are needed for that.
+#
+# build-essential IS needed, at build time, and the comment here used to say
+# the opposite. spaCy is pinned at 3.8.3, which publishes no Linux wheel for
+# aarch64 - only macOS wheels, x86_64 manylinux wheels and the sdist - so on
+# an arm64 host pip builds it from source and compiles
+# `spacy.matcher.levenshtein`. Without a compiler the build fails at the pip
+# layer below with "Failed building wheel for spacy". The old reasoning was
+# true of psycopg and not of spaCy (C-95).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 \
+    && apt-get install -y --no-install-recommends build-essential libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 # Dependencies first, so a code change does not invalidate the install layer.
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install -r backend/requirements.txt
+
+# F-09 needs this model and pip does not install it: requirements.txt says so
+# in a comment, and the image never ran it, so segmentation raised
+# SegmenterUnavailableError on every audit. It is ~12 MB, not part of the
+# multi-gigabyte set below. The model is pinned in analysis/text/segmenter.py
+# because a different one places sentence boundaries differently, which would
+# move every evidence offset.
+RUN python -m spacy download en_core_web_sm
 
 # The ML dependency set is deliberately NOT installed here. It is over 2 GB and
 # is only needed once the improved models exist (Milestone 6). To enable it,

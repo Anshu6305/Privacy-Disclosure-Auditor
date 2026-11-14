@@ -59,6 +59,7 @@ REASON_NO_TAXONOMY_MAPPING = "no_taxonomy_mapping"
 REASON_NO_MODEL = "no_model_for_task"
 REASON_UNKNOWN_VARIANT = "unknown_variant"
 REASON_VARIANT_UNAVAILABLE = "variant_unavailable"
+REASON_VERSION_NOT_FOUND = "version_not_found"
 REASON_MIXED_VARIANT = "mixed_variant"
 
 
@@ -97,7 +98,10 @@ class AuditService:
         self._snapshots = SnapshotRepository(session)
 
     def request_audit(
-        self, package_name: str, variant: str | None = None
+        self,
+        package_name: str,
+        variant: str | None = None,
+        version_labels: dict[str, str] | None = None,
     ) -> AuditRequested | AuditRequestRefused:
         """F-13/F-34. ``variant`` is optional and internal (DD-8).
 
@@ -105,7 +109,31 @@ class AuditService:
         Supplied by the Corpus Maintainer's command-line tooling, that
         variant is bound for the whole audit and there is no fallback to
         another one.
+
+        ``version_labels`` names one active `model_version.version_label` per
+        task explicitly, and is the Corpus Maintainer's other command-line
+        path. It exists because the variant axis belongs to the classifier:
+        F-11 has a baseline and an improved model, while F-12 and F-18 each
+        have exactly one, so no `improved` row exists for span extraction or
+        alignment and `variant="improved"` can never resolve all three tasks.
+
+        It is **not** a variant request and **not** a fallback. Every task
+        must be named; nothing is substituted, relabelled or defaulted, and
+        each id recorded on the audit is the model the operator asked for.
+        `audit_run` carries no variant column - each `model_version` row
+        carries its own - so a composed set needs no single-variant label and
+        the provenance tables report each model's real variant.
+
+        ``variant`` and ``version_labels`` are mutually exclusive. E3 exposes
+        only ``variant``, so no API request can reach that combination and it
+        is a caller error rather than a refusal.
         """
+        if variant is not None and version_labels is not None:
+            raise ValueError(
+                "request_audit takes either variant or version_labels, not "
+                "both: one asks the registry to choose a set and the other "
+                "states it."
+            )
         # Before any work: an unknown variant is refused here, not after the
         # policy has been fetched and segmented.
         try:
@@ -164,6 +192,38 @@ class AuditService:
 
         models: dict[str, ModelVersion] = {}
         for task in MODEL_TASKS:
+            if version_labels is not None:
+                label = version_labels.get(task)
+                model = (
+                    self._session.execute(
+                        select(ModelVersion)
+                        .where(
+                            ModelVersion.task == task,
+                            ModelVersion.version_label == label,
+                            ModelVersion.is_active.is_(True),
+                        )
+                        .limit(1)
+                    ).scalar_one_or_none()
+                    if label
+                    else None
+                )
+                if model is None:
+                    return AuditRequestRefused(
+                        package_name=application.package_name,
+                        reason=REASON_VERSION_NOT_FOUND,
+                        detail=(
+                            f"No active model version {label!r} for the "
+                            f"{task!r} task."
+                            if label
+                            else f"No model version named for the {task!r} "
+                            "task. A composed version set must name every "
+                            "task; nothing is defaulted."
+                        ),
+                        snapshot_status=snapshot.status,
+                    )
+                models[task] = model
+                continue
+
             query = select(ModelVersion).where(
                 ModelVersion.task == task, ModelVersion.is_active.is_(True)
             )
@@ -205,8 +265,12 @@ class AuditService:
         # The variant itself needs no column: every model_version row
         # carries one, and the three ids recorded below are the binding.
         # This call is here for its refusal, not its return value.
+        # A composed set is not a variant request: the operator stated the
+        # three models, so there is no variant to bind and no mixture to
+        # refuse. F-13's rule for variant requests is unchanged above.
         try:
-            bind_variant(models, requested_variant)
+            if version_labels is None:
+                bind_variant(models, requested_variant)
         except MixedVariantError as mixed:
             return AuditRequestRefused(
                 package_name=application.package_name,

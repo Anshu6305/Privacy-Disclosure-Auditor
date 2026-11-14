@@ -7,7 +7,7 @@ The same route F-12 took, and for the same reason: `distilbert-base-uncased`
 cannot be downloaded in the development environment, so training happens
 where Hugging Face is reachable.
 
-Writes `ml/runs/improved_classifier_bundle.zip`: the segment dataset plus
+Writes `ml/runs/improved_classifier_bundle_v3.zip`: the segment dataset plus
 the exact modules that read, split and train on it, at their real paths. The
 notebook unzips it and runs this repository's own
 `ml/train_improved_classifier.py`, so Colab uses the same frozen OPP-115
@@ -32,7 +32,7 @@ from ml.export_f12_bundle import required_modules  # noqa: E402
 
 ENTRY_POINT = "ml/train_improved_classifier.py"
 DATASET = Path("data/processed/opp115_segments.jsonl")
-BUNDLE = Path("ml/runs/improved_classifier_bundle.zip")
+BUNDLE = Path("ml/runs/improved_classifier_bundle_v3.zip")
 
 
 def main() -> int:
@@ -65,9 +65,14 @@ def main() -> int:
     print(
         "\nUpload it to a GPU notebook, unzip, then run:\n"
         "    python ml/train_improved_classifier.py --dry-run\n"
+        "\nIf ml/checkpoints/improved_classifier from the earlier run is still\n"
+        "there, score it without paying for the fine-tune again:\n"
+        "    python ml/train_improved_classifier.py --evaluate-only\n"
+        "\nOtherwise train, which saves the checkpoint and then scores it:\n"
         "    python ml/train_improved_classifier.py\n"
-        "and bring ml/checkpoints/improved_classifier back. Record only the\n"
-        "metrics the run actually prints."
+        "\nBring back ml/checkpoints/improved_classifier and\n"
+        "ml/runs/improved-classifier-v1-metrics.json. Record only the metrics\n"
+        "the run actually prints."
     )
     return 0
 

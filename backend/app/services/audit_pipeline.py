@@ -574,15 +574,31 @@ class AuditPipeline:
             self._session.flush()
 
             for order, record in enumerate(verdict.records, start=1):
-                segment_id = record.segment_id
+                segment_id = (
+                    record.segment_id if record.segment_id in by_segment_id else None
+                )
                 self._session.add(
                     EvidenceRecord(
                         verdict_id=row.verdict_id,
                         record_type=record.record_type,
-                        segment_id=segment_id if segment_id in by_segment_id else None,
+                        segment_id=segment_id,
+                        # F-22 requires an inconclusive record to store the
+                        # sub-threshold candidate text, and the approved
+                        # record-type table gives that type verbatim policy
+                        # text as well. This nulled it for every type but
+                        # `evidence`, so an Undetermined verdict reached the API
+                        # with offsets but no words, and F-22's stated purpose —
+                        # letting a reviewer read the passage that caused the
+                        # abstention — was defeated. An `absence` record still
+                        # carries no quote: its text is system-generated and
+                        # `ck_record_absence_has_no_quote` enforces that.
                         quoted_text=(
                             record.quoted_text
                             if record.record_type == RECORD_EVIDENCE
+                            or (
+                                record.record_type == RECORD_INCONCLUSIVE
+                                and segment_id is not None
+                            )
                             else None
                         ),
                         char_start=record.char_start,

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.config import get_settings
+from app.config import PROJECT_ROOT, get_settings
 from app.db.models import ModelVersion, TaxonomyMappingEntry, TaxonomyMappingVersion
 from app.services.audit_pipeline import FIXTURE_MODEL_PREFIX, AuditPipeline
 from sqlalchemy import select
@@ -43,13 +43,30 @@ from analysis.vocabulary import (
 #: rebuilding the checkpoint and watching the loader still fail (C-74).
 DEFAULT_BASELINE_CHECKPOINT = Path("ml/checkpoints/classifier-baseline-v1")
 
+#: Where `ml/train_improved_classifier.py` writes F-11's improved variant.
+#: Trained on a Colab T4 and restored here; held-out test macro-F1 0.6304,
+#: micro-F1 0.7775. Not a better model on every measure than the M5
+#: baseline — see the registration notes in scripts/register_models.py.
+DEFAULT_IMPROVED_CHECKPOINT = Path("ml/checkpoints/improved_classifier")
+
+
+#: Relative `checkpoint_path` and policy paths are resolved against the
+#: repository root, and that root is the checkout - not whatever directory the
+#: process happened to start in. Defaulting to "." made the worker's model
+#: lookup depend on its working directory: started from `backend/`, it looked
+#: for `backend/ml/checkpoints/...` and reported the checkpoint missing while
+#: it sat at the real path one level up (C-97). `PROJECT_ROOT` is derived from
+#: this package's own location, so it is correct from any cwd and resolves to
+#: /app inside the image, which is where the checkpoints are mounted.
+DEFAULT_REPOSITORY_ROOT = PROJECT_ROOT
+
 
 class ModelsUnavailableError(RuntimeError):
     """No usable model set. The caller must refuse to run audits."""
 
 
 def load_baseline_classifier(checkpoint: Path | str = DEFAULT_BASELINE_CHECKPOINT):
-    """The M5 baseline, the only evaluated classifier in the project."""
+    """The M5 baseline: the reference experiment, never retrained."""
     from analysis.models.practice_classifier import BaselinePracticeClassifier
 
     checkpoint = Path(checkpoint)
@@ -162,7 +179,7 @@ def load_mapping_rules(session: Session, version_id: int) -> list[MappingRule]:
     ]
 
 
-def load_for_model_version(model: ModelVersion, repository_root: Path | str = "."):
+def load_for_model_version(model: ModelVersion, repository_root: Path | str = DEFAULT_REPOSITORY_ROOT):
     """Load exactly the artefact a `model_version` row names (F-13, F-34).
 
     The audit records three model ids when it is requested; the worker binds
@@ -195,6 +212,11 @@ def load_for_model_version(model: ModelVersion, repository_root: Path | str = ".
     if model.task == TASK_ALIGNMENT:
         return _load_aligner_from(checkpoint)
     raise ModelsUnavailableError(f"unknown model task {model.task!r}")
+
+
+def load_improved_classifier(checkpoint: Path | str = DEFAULT_IMPROVED_CHECKPOINT):
+    """F-11's improved variant, by the same contract as the baseline loader."""
+    return _load_improved_classifier(Path(checkpoint))
 
 
 def _load_improved_classifier(checkpoint: Path):
@@ -234,7 +256,7 @@ def _load_aligner_from(checkpoint: Path):
     )
 
 
-def build_bound_pipeline_factory(repository_root: Path | str = "."):
+def build_bound_pipeline_factory(repository_root: Path | str = DEFAULT_REPOSITORY_ROOT):
     """A factory that binds each audit to the version set it recorded.
 
     F-13: the variant is bound when the worker claims the job and never
@@ -283,7 +305,7 @@ def build_bound_pipeline_factory(repository_root: Path | str = "."):
     return factory
 
 
-def build_pipeline_factory(repository_root: Path | str = "."):
+def build_pipeline_factory(repository_root: Path | str = DEFAULT_REPOSITORY_ROOT):
     """A callable the worker uses to build one pipeline per session.
 
     Raises at **startup** when the models are unavailable, so a worker never
@@ -335,6 +357,7 @@ __all__ = [
     "build_pipeline_factory",
     "load_aligner",
     "load_baseline_classifier",
+    "load_improved_classifier",
     "build_bound_pipeline_factory",
     "load_for_model_version",
     "load_mapper",

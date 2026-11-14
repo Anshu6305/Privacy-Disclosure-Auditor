@@ -28,9 +28,17 @@ from app.services.audit_pipeline import (
     AuditFailedError,
     claim_next_audit,
 )
+from sqlalchemy import func, select
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from analysis.vocabulary import STATUS_COMPLETED, STATUS_FAILED
+from analysis.vocabulary import (
+    STATUS_COMPLETED,
+    STATUS_FAILED,
+    STATUS_QUEUED,
+    STATUS_RUNNING,
+)
 
 logger = logging.getLogger("auditor.worker")
 
@@ -168,6 +176,31 @@ class AuditWorker:
         )
 
 
+def describe_target(database_url: str) -> str:
+    """Host, port and database, with the credentials dropped.
+
+    The worker used to log only "worker started", so a worker connected to a
+    different database from the one holding the audits sat quietly polling an
+    empty queue. Naming the target makes that visible in the first line of
+    output. The password is never rendered: only the three fields below are
+    read off the parsed URL (NFR - credentials are not printed).
+    """
+    url = make_url(database_url)
+    return f"{url.host}:{url.port}/{url.database}"
+
+
+def count_by_status(session: Session, status: str) -> int:
+    """How many audits this database holds in one status."""
+    return session.execute(
+        select(func.count()).select_from(AuditRun).where(AuditRun.status == status)
+    ).scalar_one()
+
+
+def count_queued(session: Session) -> int:
+    """How many audits this database has waiting, for the startup line."""
+    return count_by_status(session, STATUS_QUEUED)
+
+
 def main() -> int:  # pragma: no cover - process entry point
     logging.basicConfig(level=get_settings().log_level)
     engine = engine_or_none()
@@ -185,6 +218,38 @@ def main() -> int:  # pragma: no cover - process entry point
 
     def session_factory() -> Session:
         return Session(bind=engine)
+
+    settings = get_settings()
+    target = describe_target(settings.database_url)
+    try:
+        with session_factory() as session:
+            queued = count_queued(session)
+            running = count_by_status(session, STATUS_RUNNING)
+    except SQLAlchemyError as exc:
+        # The compose file already documents exit 2 for an unavailable
+        # database; this is where that becomes true rather than a stack trace
+        # from the first poll.
+        logger.error("cannot reach the database at %s: %s", target, exc)
+        return 2
+
+    logger.info("polling %s; %s audit(s) queued there", target, queued)
+    if queued == 0:
+        logger.warning(
+            "nothing queued in %s. If an audit is waiting elsewhere, this "
+            "worker is pointed at the wrong database: set POSTGRES_DB to the "
+            "one the audit was created in.",
+            target,
+        )
+    if running:
+        # DD-2 allows one active audit, so a stuck `running` row stops the
+        # queue moving and looks exactly like an idle worker from the log.
+        logger.warning(
+            "%s audit(s) already `running` in %s. Under DD-2 nothing else is "
+            "claimed until they finish; scripts/release_stuck_audits.py "
+            "releases a row left behind by a crash.",
+            running,
+            target,
+        )
 
     AuditWorker(
         session_factory, factory, poll_interval=get_settings().worker_poll_interval_seconds
