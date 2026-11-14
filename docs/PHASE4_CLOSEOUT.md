@@ -72,7 +72,7 @@ Last full run, 2026-11-14:
 
 | Check | Result |
 | --- | --- |
-| Backend `pytest tests -p no:warnings` | **812 passed, 78 skipped, 0 failed** (756 at F-13 close; 56 added across C-89 to C-97) |
+| Backend `pytest tests -p no:warnings` | **818 passed, 78 skipped, 0 failed** (756 at F-13 close; 62 added across C-89 to C-99) |
 | `ruff check .` | clean (ruff 0.8.4, the pinned version) |
 | Frontend Vitest | 33 passed |
 | `npm run lint` / `vite build` | clean / succeeds |
@@ -117,6 +117,44 @@ preferable depends on whether macro or micro performance matters for the
 task, and this phase does not settle that.
 
 ## 5. Real pilot
+
+**Audit 13, `com.spotify.music`, completed on PostgreSQL with the improved
+classifier.** Reported from `privacy_auditor_pilot` by the team on
+2026-11-15:
+
+| | |
+| --- | --- |
+| Status | `completed` |
+| Verdicts | 14 — **6 Consistent, 8 Undetermined** |
+| Evidence records | 18 |
+| Classification | `f11-improved-v1` (improved) |
+| Span extraction | `f12-span-extractor-v1` |
+| Alignment | `f18-zeroshot-nli-v1` |
+| Source | the manually collected Spotify snapshot, not a fixture |
+
+This is the run FR-13 and M11 were waiting for: the improved variant, on real
+collected sources, through PostgreSQL, end to end.
+
+**Provenance of these figures.** They were read from the pilot database by the
+team and are **not independently verified in this document's own tooling**:
+the pilot database is published on the team Mac's loopback only and is not
+reachable from an agent session, as `CLAUDE.md` records. What was checked
+is that the counts are internally consistent with the implemented rules —
+6 + 8 = 14; F-23 gives a Consistent verdict no evidence record, so all 18
+must come from the 8 Undetermined verdicts; F-22's recorder stores 1 to 3
+records per Undetermined verdict, permitting 8 to 24. 18 is in range. That is
+corroboration, not verification. To confirm:
+
+    docker exec -it auditor_database psql -U auditor -d privacy_auditor_pilot -c "
+    SELECT a.audit_id, a.status,
+           (SELECT count(*) FROM verdict v WHERE v.audit_id = a.audit_id) AS verdicts,
+           (SELECT count(*) FROM evidence_record e JOIN verdict v
+              ON v.verdict_id = e.verdict_id WHERE v.audit_id = a.audit_id) AS evidence
+    FROM audit_run a WHERE a.audit_id = 13;"
+
+The figures agree closely with the controlled SQLite run of the same snapshot
+and the same three models (14 verdicts, 6 Consistent / 8 Undetermined, 16
+evidence records), which is what a correct PostgreSQL run should look like.
 
 **Audit 6, `com.spotify.music`, completed.** 14 Data Safety categories:
 **7 Consistent, 7 Undetermined**, 15 evidence records.
@@ -305,6 +343,37 @@ resolved to absolute project-root paths and loaded
 (`ImprovedPracticeClassifier`, `SpanExtractor`, `ZeroShotAligner`), and the
 improved classifier returned real scores. 12 targeted tests passed.
 
+**Audit 13 closes the sequence.** With a worker on current code and pointed
+at the pilot database, the same snapshot and the same three model versions
+completed: 14 verdicts, 18 evidence records (§5). Audits 9 and 11 remain as
+the record of what had to be fixed to get there.
+
+## 10a. Multi-application capability, and what has actually been validated
+
+The approved scope is a **generic Android privacy-disclosure auditor**: any
+application whose Play Data Safety declaration and privacy policy are
+supplied can be audited. Nothing in the implementation is specific to the
+pilot.
+
+**Implemented and tested** (`tests/unit/test_multi_application.py`, 6 tests):
+
+* applications are looked up by package name, case-insensitively, and an
+  application with no collected sources is refused rather than invented;
+* two applications coexist, each with its own disclosure snapshot and its own
+  stored policy document;
+* an audit resolves the snapshot and policy of **its own** application;
+* no module under `backend/app`, `analysis/` or `acquisition/` evaluates a
+  string naming a specific application. The pilot's name appears only in
+  comments and docstrings, where it records which real audit exposed a given
+  rule — the test parses each file and allows documentation while failing on
+  a runtime string.
+
+**Validated end to end on real data: one application.**
+`com.spotify.music`, manually collected, 19 Data Safety entries, policy
+hash-verified. That is the honest coverage figure. The capability is generic;
+the corpus is one application, and adding another is a collection task, not
+an implementation task.
+
 ## 11. Demonstration procedure
 
 Five minutes, on the team Mac, with Docker Desktop running.
@@ -320,11 +389,17 @@ Five minutes, on the team Mac, with Docker Desktop running.
    `model_version` rows with their real identifiers and variants, and the
    improved classifier's stored metrics (test macro-F1 0.6304, micro-F1
    0.7775).
-4. **A report.** Open audit 6 — completed, 14 verdicts, real models,
-   `uses_fixture_models` false. Expand a category to show an evidence record
-   whose quote is a verbatim slice of the stored policy at the recorded
-   offsets, and an Undetermined verdict whose inconclusive record now carries
-   the passage it abstained on (C-91).
+4. **A report.** Open **audit 13** — completed, 14 verdicts, 18 evidence
+   records, the improved classifier, `uses_fixture_models` false. Expand a
+   category to show an evidence record whose quote is a verbatim slice of the
+   stored policy at the recorded offsets, and an Undetermined verdict whose
+   inconclusive record now carries the passage it abstained on (C-91).
+   Audit 6 is the baseline-classifier comparison on the same snapshot.
+
+   **The API must point at the pilot database or audit 13 will not be there.**
+   `.env` sets `POSTGRES_DB=privacy_auditor`, which is a different database;
+   start the API with `POSTGRES_DB=privacy_auditor_pilot` in its environment.
+   This is a demonstration-time override, not a change to the default.
 5. **Honesty by construction.** `python scripts/request_audit.py
    com.spotify.music --variant improved` refuses with `variant_unavailable`
    and names the task that lacks the variant — no fallback, no report whose

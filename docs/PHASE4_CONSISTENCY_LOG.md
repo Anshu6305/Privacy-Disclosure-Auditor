@@ -2817,3 +2817,33 @@ reached PostgreSQL, and audit 11 additionally records that a stale worker
 process is indistinguishable from stale code unless the process says what it
 loaded - which is why the startup line was added rather than only the path
 default being corrected.
+
+### C-99 Audit 13 completed, and the auditor was checked for being generic
+
+**Audit 13 completed on PostgreSQL** with the improved classifier on the
+manually collected Spotify snapshot: 14 verdicts (6 Consistent, 8
+Undetermined), 18 evidence records, model versions `f11-improved-v1`,
+`f12-span-extractor-v1`, `f18-zeroshot-nli-v1`. Reported from
+`privacy_auditor_pilot` by the team; the pilot database is not reachable from
+an agent session, so these figures are recorded with that provenance rather
+than as an in-session verification. Their internal consistency was checked:
+6 + 8 = 14, and since F-23 gives a Consistent verdict no evidence record all
+18 must come from the 8 Undetermined verdicts, which F-22's recorder permits
+at 1 to 3 each — a range of 8 to 24. The SQLite run of the same snapshot and
+models gave 14 verdicts, 6/8 and 16 evidence records.
+
+**The auditor is generic over applications, and that is now tested rather
+than asserted.** `tests/unit/test_multi_application.py` (6 tests) covers
+lookup by package name, refusal of an application with no collected sources,
+two applications coexisting with their own snapshots and policy documents,
+and each audit resolving its own application's sources. The sixth test parses
+every module under `backend/app`, `analysis/` and `acquisition/` and fails if
+a string the code evaluates names a specific application; docstrings and
+comments are allowed, because several record which real audit exposed a rule
+(C-86, C-87, C-93). The first run of that test failed on docstrings and was
+tightened to runtime strings, which is the distinction that matters: a
+package name in a comment documents history, one in a comparison would make
+the system application-specific.
+
+Real-world validation coverage is **one application**. The capability is
+generic; the corpus is not. Adding a second is a collection task.
