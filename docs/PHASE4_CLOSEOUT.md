@@ -255,7 +255,7 @@ this phase should be read as accuracy.
    the code but not in the pilot database, so `request_audit --variant
    improved` will refuse.
 2. **Two pilot audit reports are untracked** —
-   `spotify_audit_5_report.json` and `spotify_audit_6_report.json`. Audit 6
+   `artifacts/audit_exports/spotify_audit_5_report.json` and `artifacts/audit_exports/spotify_audit_6_report.json`. Audit 6
    is the evidence §5 rests on. The team should decide whether to commit
    them; untracked, they can be lost.
 3. **Two tracker rows are stale**, as §1 notes: M4 and M7 predate the pilot.
