@@ -1,0 +1,24 @@
+gantt
+    title Project schedule, derived from Phase 3 PERT expected times (15.17 weeks)
+    dateFormat YYYY-MM-DD
+    axisFormat Wk %W
+    todayMarker off
+    section Corpus and data
+    A1 Corpus collection and freeze (R2) :crit, a1, 2026-08-03, 15d
+    A4 Gold-set annotation (All) :a4, 2026-08-18, 19d
+    section Database and backend
+    A2 Database schema and repository (R5) :a2, 2026-08-03, 8d
+    A11 Backend API and supporting services (R4) :a11, 2026-08-29, 15d
+    A12 Frontend and report views (R6) :a12, 2026-09-13, 15d
+    section Text and models
+    A3 Text processing pipeline (R3) :crit, a3, 2026-08-18, 11d
+    A5 Baseline classifier (R3) :crit, a5, 2026-08-29, 12d
+    A6 Improved classifier (R3) :crit, a6, 2026-09-10, 15d
+    A7 Span extraction component (R3) :a7, 2026-09-10, 15d
+    section Alignment and verdicts
+    A8 Taxonomy mapping artefact (R1) :a8, 2026-08-18, 11d
+    A9 Semantic alignment model (R1) :crit, a9, 2026-09-25, 16d
+    A10 Verdict and evidence engine (R1, R4) :crit, a10, 2026-10-11, 11d
+    section Integration and closeout
+    A13 System integration (R4) :crit, a13, 2026-10-22, 12d
+    A14 Evaluation and documentation (R6, All) :crit, a14, 2026-11-03, 15d

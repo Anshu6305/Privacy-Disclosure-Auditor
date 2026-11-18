@@ -1,0 +1,83 @@
+---
+title: "Object (instance) diagram — audit 6 of com.spotify.music, from the committed report"
+---
+classDiagram
+    class spotify_app["spotify : Application"] {
+        app_id = 1
+        package_name = "com.spotify.music"
+        app_name = "Spotify: Music and Podcasts"
+    }
+    class snapshot_3["snapshot3 : DisclosureSnapshot"] {
+        snapshot_id = 3
+        collected_at = 2026-11-06T08:41:21Z
+        retrieval_mode = "manual_import"
+        policy_doc_sha256 = "13089e7b...41fa4ea8"
+        status = "complete"
+        declares_no_data_collected = false
+    }
+    class decl_location["declLocation : DeclaredPractice"] {
+        ds_category = "Location"
+        is_collected = true
+        is_shared = true
+    }
+    class decl_personal["declPersonal : DeclaredPractice"] {
+        ds_category = "Personal info"
+        is_collected = true
+        is_shared = true
+    }
+    class audit_6["audit6 : AuditRun"] {
+        audit_id = 6
+        status = "completed"
+        threshold_config = classifier 0.5, span 0.5, alignment 0.5
+        uses_fixture_models = false
+    }
+    class mv_cls["mvClassifier : ModelVersion"] {
+        version_label = "m5-baseline-v1"
+        task = "classification"
+        variant = "baseline"
+    }
+    class mv_span["mvSpan : ModelVersion"] {
+        version_label = "f12-span-extractor-v1"
+        task = "span_extraction"
+        variant = "baseline"
+    }
+    class mv_align["mvAligner : ModelVersion"] {
+        version_label = "f18-zeroshot-nli-v1"
+        task = "alignment"
+        variant = "baseline"
+    }
+    class map_v1["mapV1 : TaxonomyMappingVersion"] {
+        version_label = "opp115-to-ds-v1"
+        is_active = true
+    }
+    class verdict_app["verdictAppActivity : Verdict"] {
+        ds_category = "App activity"
+        verdict_value = "Consistent"
+        confidence = 0.7629
+        declared = true
+        found_in_policy = true
+    }
+    class verdict_appinfo["verdictAppInfo : Verdict"] {
+        ds_category = "App info and performance"
+        verdict_value = "Undetermined"
+        confidence = 0.0
+        abstention_involved = true
+    }
+    class evidence_1["evidence1 : EvidenceRecord"] {
+        record_type = "inconclusive"
+        display_order = 1
+        reason = "could not determine ... below threshold"
+    }
+
+    spotify_app "1" --> "3" snapshot_3 : has snapshots
+    snapshot_3 "1" --> "19" decl_location : declares
+    snapshot_3 --> decl_personal : declares
+    audit_6 --> spotify_app : audits
+    audit_6 --> snapshot_3 : reads
+    audit_6 --> mv_cls : bound to
+    audit_6 --> mv_span : bound to
+    audit_6 --> mv_align : bound to
+    audit_6 --> map_v1 : uses
+    audit_6 "1" --> "14" verdict_app : produced
+    audit_6 --> verdict_appinfo : produced
+    verdict_appinfo "1" --> "1..3" evidence_1 : justified by
